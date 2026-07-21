@@ -109,7 +109,7 @@ struct HaviMarkupCanvas: View {
 
     private func drawBlurPlaceholder(_ rect: CGRect, in context: GraphicsContext) {
         let path = Path(roundedRect: rect, cornerRadius: 6)
-        context.fill(path, with: .color(Color(white: 0.20).opacity(0.92)))
+        context.fill(path, with: .color(.black))
         context.stroke(path, with: .color(.white.opacity(0.6)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
     }
 

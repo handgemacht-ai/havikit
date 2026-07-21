@@ -48,6 +48,21 @@ final class HaviKitEnvelopeTests: XCTestCase {
         XCTAssertEqual(dev?["commit"] as? String, "a1b2c3d")
     }
 
+    func testEmptyStringDevFieldsAreTreatedAsAbsent() {
+        var input = Self.minimalInput
+        input.dev = HaviDev(project: "lesewerkstatt", worktree: "", branch: "")
+
+        // Multipart siblings: an empty worktree/branch must drop (would otherwise
+        // break backend filtering), while a real project is kept.
+        XCTAssertEqual(HaviEnvelopeBuilder.siblings(input), ["project": "lesewerkstatt"])
+
+        // x:havi.dev applies the same guard.
+        let dev = ((HaviEnvelopeBuilder.build(input)["x:havi"] as? [String: Any])?["dev"]) as? [String: Any]
+        XCTAssertEqual(dev?["project"] as? String, "lesewerkstatt")
+        XCTAssertNil(dev?["worktree"])
+        XCTAssertNil(dev?["branch"])
+    }
+
     func testEmptyCommentIsOmitted() {
         var input = Self.minimalInput
         input.comment = "   "

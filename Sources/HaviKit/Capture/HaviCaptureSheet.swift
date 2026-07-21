@@ -122,7 +122,7 @@ struct HaviCaptureSheet: View {
     private var markupHint: String {
         switch model.markup.tool {
         case .select: return "Tap a mark to select it, then drag to move or delete it."
-        case .blur: return "Drag over anything private — it's pixelated into the image before it's sent."
+        case .blur: return "Drag over anything private — it's blacked out in the image before it's sent."
         case .highlighter: return "Drag to highlight the area of the bug."
         default: return "Draw on the screenshot to point at the bug."
         }

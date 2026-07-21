@@ -102,9 +102,9 @@ public enum HaviEnvelopeBuilder {
     /// `worktree` / `branch` only (design §4). `commit` is not a sibling.
     public static func siblings(_ input: HaviEnvelopeInput) -> [String: String] {
         var out: [String: String] = [:]
-        if let project = input.dev.project { out["project"] = project }
-        if let worktree = input.dev.worktree { out["worktree"] = worktree }
-        if let branch = input.dev.branch { out["branch"] = branch }
+        if let project = nonEmpty(input.dev.project) { out["project"] = project }
+        if let worktree = nonEmpty(input.dev.worktree) { out["worktree"] = worktree }
+        if let branch = nonEmpty(input.dev.branch) { out["branch"] = branch }
         return out
     }
 
@@ -151,9 +151,9 @@ public enum HaviEnvelopeBuilder {
 
     private static func buildDev(_ dev: HaviDev) -> [String: Any] {
         var out: [String: Any] = [:]
-        if let project = dev.project { out["project"] = project }
-        if let worktree = dev.worktree { out["worktree"] = worktree }
-        if let branch = dev.branch { out["branch"] = branch }
+        if let project = nonEmpty(dev.project) { out["project"] = project }
+        if let worktree = nonEmpty(dev.worktree) { out["worktree"] = worktree }
+        if let branch = nonEmpty(dev.branch) { out["branch"] = branch }
         if let commit = dev.commit { out["commit"] = commit }
         return out
     }
