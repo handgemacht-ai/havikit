@@ -10,6 +10,12 @@ public enum Havi {
     @MainActor
     private static var runtime: HaviRuntime?
 
+    /// The live runtime, exposed to the SwiftUI overlay host so `.haviOverlay()`
+    /// can present the capture sheet. `nil` until `start` enables the SDK (the
+    /// Release path), where the overlay is a pure passthrough.
+    @MainActor
+    static var captureRuntime: HaviRuntime? { isEnabled ? runtime : nil }
+
     /// Lifecycle. Inert until config enables it; idempotent across repeat calls.
     @MainActor
     public static func start(config: HaviConfig = .fromBundle()) {
@@ -24,6 +30,12 @@ public enum Havi {
     public static func capture(screen: String? = nil) {
         guard isEnabled, let runtime else { return }
         runtime.presentCapture(screen: screen)
+    }
+
+    /// Trigger a capture from a non-isolated context (the shake / long-press
+    /// callbacks), hopping to the main actor. Cheap no-op when the SDK is inert.
+    public nonisolated static func triggerCapture(screen: String? = nil) {
+        Task { @MainActor in capture(screen: screen) }
     }
 
     /// Breadcrumb log ring — callable from any thread/actor. Also the v1

@@ -24,6 +24,22 @@ enum HaviImageRenderer {
     }
 
     static func render(_ image: UIImage, format: HaviImageFormat, maxLongestSide: Int) -> Data? {
+        renderWithSize(image, format: format, maxLongestSide: maxLongestSide)?.data
+    }
+
+    /// Like `encode`, but also returns the **downscaled pixel size** so the
+    /// capture model can project the markup rectangle into the exact image space
+    /// the screenshot is encoded in (design §3, §4).
+    static func encodeWithSize(_ image: UIImage, format: HaviImageFormat, maxBytes: Int) -> (data: Data, size: HaviSize)? {
+        for side in HaviImagePlan.stepDownLadder {
+            if let result = renderWithSize(image, format: format, maxLongestSide: side), result.data.count <= maxBytes {
+                return result
+            }
+        }
+        return renderWithSize(image, format: format, maxLongestSide: HaviImagePlan.stepDownLadder.last ?? HaviImagePlan.defaultMaxLongestSide)
+    }
+
+    static func renderWithSize(_ image: UIImage, format: HaviImageFormat, maxLongestSide: Int) -> (data: Data, size: HaviSize)? {
         let target = HaviImagePlan.targetSize(
             width: Int(image.size.width.rounded()),
             height: Int(image.size.height.rounded()),
@@ -39,12 +55,15 @@ enum HaviImageRenderer {
         let scaled = renderer.image { _ in
             image.draw(in: CGRect(x: 0, y: 0, width: target.width, height: target.height))
         }
+        let data: Data?
         switch format {
         case .png:
-            return scaled.pngData()
+            data = scaled.pngData()
         case .jpeg:
-            return scaled.jpegData(compressionQuality: jpegQuality)
+            data = scaled.jpegData(compressionQuality: jpegQuality)
         }
+        guard let data else { return nil }
+        return (data, target)
     }
 
     /// A reencoder over `image` for the uploader's fallback paths (design §4).

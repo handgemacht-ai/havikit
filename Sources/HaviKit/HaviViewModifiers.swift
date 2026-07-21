@@ -54,12 +54,17 @@ struct HaviContextModifier: ViewModifier {
     }
 }
 
-/// Root capture host. Installed once at the app root; the shake overlay +
-/// capture sheet (design §2) are wired in SDK-4. Inert passthrough today so
-/// Release (where `Havi.isEnabled == false`) renders nothing extra.
+/// Root capture host. Installed once at the app root; installs the shake /
+/// two-finger-long-press triggers, relays redaction frames, and presents the
+/// capture sheet (design §2). Inert passthrough when `Havi.isEnabled == false`
+/// (the Release path renders nothing extra).
 struct HaviOverlayModifier: ViewModifier {
     func body(content: Content) -> some View {
+        #if canImport(UIKit)
+        HaviOverlayContainer(content: content)
+        #else
         content
+        #endif
     }
 }
 
