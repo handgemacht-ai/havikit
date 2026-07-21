@@ -64,9 +64,11 @@ struct HaviFloatingCaptureButton: View {
             Image(systemName: "ladybug.fill")
                 .font(.title2)
                 .foregroundStyle(.white)
-                .frame(width: 52, height: 52)
+                .frame(width: 54, height: 54)
                 .background(Circle().fill(HaviMarkupCanvas.accent))
-                .shadow(radius: 4, y: 2)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
+                .shadow(color: HaviMarkupCanvas.accent.opacity(0.35), radius: 10, y: 4)
+                .shadow(color: Color.black.opacity(0.15), radius: 3, y: 1)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Report to HAVI")

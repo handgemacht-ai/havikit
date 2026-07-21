@@ -108,9 +108,9 @@ struct HaviMarkupCanvas: View {
     }
 
     private func drawBlurPlaceholder(_ rect: CGRect, in context: GraphicsContext) {
-        let path = Path(roundedRect: rect, cornerRadius: 4)
-        context.fill(path, with: .color(Color(white: 0.22).opacity(0.94)))
-        context.stroke(path, with: .color(.white.opacity(0.65)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+        let path = Path(roundedRect: rect, cornerRadius: 6)
+        context.fill(path, with: .color(Color(white: 0.20).opacity(0.92)))
+        context.stroke(path, with: .color(.white.opacity(0.6)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
     }
 
     private func drawSelection(_ bounds: CGRect, size: CGSize, in context: GraphicsContext) {
@@ -120,6 +120,16 @@ struct HaviMarkupCanvas: View {
             with: .color(Self.accent),
             style: StrokeStyle(lineWidth: 1.5, dash: [5, 3])
         )
+        for corner in [
+            CGPoint(x: rect.minX, y: rect.minY),
+            CGPoint(x: rect.maxX, y: rect.minY),
+            CGPoint(x: rect.minX, y: rect.maxY),
+            CGPoint(x: rect.maxX, y: rect.maxY)
+        ] {
+            let handle = Path(ellipseIn: CGRect(x: corner.x - 3.5, y: corner.y - 3.5, width: 7, height: 7))
+            context.fill(handle, with: .color(.white))
+            context.stroke(handle, with: .color(Self.accent), style: StrokeStyle(lineWidth: 1.5))
+        }
     }
 
     private func strokePath(_ points: [CGPoint], size: CGSize) -> Path {

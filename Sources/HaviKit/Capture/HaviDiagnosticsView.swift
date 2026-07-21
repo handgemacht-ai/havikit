@@ -16,46 +16,56 @@ struct HaviDiagnosticsBadgeRow: View {
     var body: some View {
         if hasDiagnostics {
             Button(action: onOpen) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     if consoleCount > 0 {
-                        badge(system: "exclamationmark.triangle.fill",
-                              text: "\(consoleCount) console \(consoleCount == 1 ? "error" : "errors")",
-                              color: .orange)
-                    }
-                    if consoleCount > 0, networkCount > 0 {
-                        Text("·").foregroundStyle(.secondary)
+                        pill(system: "exclamationmark.triangle.fill", text: "\(consoleCount) console", color: .orange)
                     }
                     if networkCount > 0 {
-                        badge(system: "xmark.octagon.fill",
-                              text: "\(networkCount) network \(networkCount == 1 ? "error" : "errors")",
-                              color: .red)
+                        pill(system: "xmark.octagon.fill", text: "\(networkCount) network", color: .red)
                     }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Text("Review")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
                 }
-                .padding(12)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.secondary.opacity(0.10)))
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("havi-diagnostics-row")
         } else {
             HStack(spacing: 8) {
-                Image(systemName: "checkmark.seal").foregroundStyle(.secondary)
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(Color.green.opacity(0.7))
                 Text("No console or network errors captured")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 6)
         }
     }
 
-    private func badge(system: String, text: String, color: Color) -> some View {
+    private func pill(system: String, text: String, color: Color) -> some View {
         HStack(spacing: 5) {
-            Image(systemName: system).foregroundStyle(color)
-            Text(text).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+            Image(systemName: system)
+                .font(.caption)
+                .foregroundStyle(color)
+            Text(text)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
         }
+        .padding(.vertical, 5)
+        .padding(.horizontal, 9)
+        .background(Capsule().fill(color.opacity(0.15)))
     }
 }
 
@@ -73,26 +83,28 @@ struct HaviDiagnosticsDetailSheet: View {
                 if !model.diagnostics.consoleErrors.isEmpty {
                     Section {
                         Toggle("Attach console errors", isOn: $model.includeConsoleErrors)
+                            .tint(HaviMarkupCanvas.accent)
                             .accessibilityIdentifier("havi-diagnostics-console-toggle")
                         ForEach(Array(model.diagnostics.consoleErrors.enumerated()), id: \.offset) { _, entry in
                             entryRow(title: entry.message, detail: "[\(entry.level.rawValue)] \(entry.message)")
                         }
                     } header: {
-                        label("Console", systemImage: "exclamationmark.triangle.fill", color: .orange,
-                              count: model.diagnostics.consoleErrors.count)
+                        header("Console", systemImage: "exclamationmark.triangle.fill", color: .orange,
+                               count: model.diagnostics.consoleErrors.count)
                     }
                 }
 
                 if !model.diagnostics.networkErrors.isEmpty {
                     Section {
                         Toggle("Attach network errors", isOn: $model.includeNetworkErrors)
+                            .tint(HaviMarkupCanvas.accent)
                             .accessibilityIdentifier("havi-diagnostics-network-toggle")
                         ForEach(Array(model.diagnostics.networkErrors.enumerated()), id: \.offset) { _, entry in
                             entryRow(title: entry.message, detail: entry.message)
                         }
                     } header: {
-                        label("Network", systemImage: "xmark.octagon.fill", color: .red,
-                              count: model.diagnostics.networkErrors.count)
+                        header("Network", systemImage: "xmark.octagon.fill", color: .red,
+                               count: model.diagnostics.networkErrors.count)
                     }
                 }
             }
@@ -114,19 +126,39 @@ struct HaviDiagnosticsDetailSheet: View {
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
+                .padding(.vertical, 4)
         } label: {
             Text(title)
-                .font(.footnote)
+                .font(.system(.footnote, design: .monospaced))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
+        .tint(HaviMarkupCanvas.accent)
     }
 
-    private func label(_ title: String, systemImage: String, color: Color, count: Int) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage).foregroundStyle(color)
-            Text("\(title) (\(count))")
+    private func header(_ title: String, systemImage: String, color: Color, count: Int) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.caption)
+                .foregroundStyle(color)
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .textCase(nil)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 0)
+            Text("\(count)")
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(color.opacity(0.15)))
         }
+        .padding(.vertical, 2)
     }
 }
 #endif

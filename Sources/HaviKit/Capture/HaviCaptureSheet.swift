@@ -22,6 +22,8 @@ struct HaviCaptureSheet: View {
     @State private var connectReconnect = false
     @State private var showDiagnostics = false
     @FocusState private var commentFocused: Bool
+    @Namespace private var prioritySlide
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(session: HaviCaptureSession, runtime: HaviRuntime, onClose: @escaping () -> Void) {
         self.session = session
@@ -33,7 +35,7 @@ struct HaviCaptureSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 22) {
                     markupEditor
                     diagnosticsBadge
 
@@ -48,6 +50,8 @@ struct HaviCaptureSheet: View {
                     submitButton
                 }
                 .padding(20)
+                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: runtime.isConnected)
+                .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.failure != nil)
             }
             .navigationTitle("Report to HAVI")
             .navigationBarTitleDisplayMode(.inline)
@@ -73,23 +77,46 @@ struct HaviCaptureSheet: View {
     // MARK: - Markup
 
     private var markupEditor: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HaviMarkupToolbar(model: model.markup)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
             }
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.05), radius: 6, y: 3)
+
             HaviMarkupCanvas(image: session.image, model: model.markup)
                 .frame(minHeight: 300, maxHeight: 520)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(Color.black.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
                 )
+                .shadow(color: Color.black.opacity(0.08), radius: 10, y: 4)
+
             HaviColorSwatchRow(model: model.markup)
-            Text(markupHint)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+
+            markupHintLabel
         }
+    }
+
+    private var markupHintLabel: some View {
+        Label {
+            Text(markupHint)
+        } icon: {
+            Image(systemName: model.markup.tool.systemImage)
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .animation(reduceMotion ? nil : .snappy, value: model.markup.tool)
     }
 
     private var markupHint: String {
@@ -110,24 +137,40 @@ struct HaviCaptureSheet: View {
     }
 
     private var connectPrompt: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Not connected to HAVI yet.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Button("Connect to HAVI") { openConnect(reconnect: false) }
+        HStack(spacing: 12) {
+            Image(systemName: "link.circle.fill")
+                .font(.title3)
+                .foregroundStyle(HaviMarkupCanvas.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("You're not connected to HAVI")
+                    .font(.subheadline.weight(.semibold))
+                Text("Connect to send this report.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("Connect") { openConnect(reconnect: false) }
                 .font(.subheadline.weight(.semibold))
                 .buttonStyle(.bordered)
+                .tint(HaviMarkupCanvas.accent)
                 .accessibilityIdentifier("havi-connect-prompt")
         }
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.blue.opacity(0.12)))
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(HaviMarkupCanvas.accent.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(HaviMarkupCanvas.accent.opacity(0.18), lineWidth: 1)
+        )
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private var commentField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Comment")
-                .font(.subheadline.weight(.semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            eyebrow("Comment")
             TextField("What's wrong here? (optional)", text: $model.comment, axis: .vertical)
                 .lineLimit(2...5)
                 .textFieldStyle(.roundedBorder)
@@ -138,29 +181,39 @@ struct HaviCaptureSheet: View {
     }
 
     private var prioritySegments: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Priority")
-                .font(.subheadline.weight(.semibold))
-            HStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 8) {
+            eyebrow("Priority")
+            HStack(spacing: 4) {
                 segment(.high, label: "High")
                 segment(.medium, label: "Medium")
                 segment(.low, label: "Low")
             }
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.secondary.opacity(0.12)))
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
+            )
+            .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: model.priority)
         }
     }
 
     private func segment(_ value: HaviPriority, label: String) -> some View {
-        Button {
+        let selected = model.priority == value
+        return Button {
             model.priority = value
         } label: {
             Text(label)
-                .font(.subheadline.weight(model.priority == value ? .semibold : .regular))
-                .frame(maxWidth: .infinity, minHeight: 40)
-                .foregroundStyle(model.priority == value ? Color.white : Color.primary)
+                .font(.subheadline.weight(selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Color.white : Color.primary.opacity(0.7))
+                .frame(maxWidth: .infinity, minHeight: 38)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(model.priority == value ? HaviMarkupCanvas.accent : Color.clear)
+                    ZStack {
+                        if selected {
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(HaviMarkupCanvas.accent)
+                                .matchedGeometryEffect(id: "prioritySelection", in: prioritySlide)
+                        }
+                    }
                 )
         }
         .buttonStyle(.plain)
@@ -169,21 +222,36 @@ struct HaviCaptureSheet: View {
     }
 
     private func failureBanner(_ failure: HaviSubmitFailure) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(failure.userMessage)
-                .font(.footnote)
-                .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Color.orange)
+                Text(failure.userMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+            }
             Button(action: { handleFailureAction(failure.kind) }) {
                 Text(actionLabel(for: failure.kind))
                     .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderedProminent)
+            .tint(HaviMarkupCanvas.accent)
             .disabled(model.isSubmitting)
             .accessibilityIdentifier("havi-retry-button")
         }
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.yellow.opacity(0.18)))
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.orange.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.25), lineWidth: 1)
+        )
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private func handleFailureAction(_ kind: HaviSubmitFailureKind) {
@@ -197,16 +265,27 @@ struct HaviCaptureSheet: View {
     private var submitButton: some View {
         Button(action: { Task { await model.submit() } }) {
             HStack(spacing: 8) {
-                if model.isSubmitting { ProgressView() }
-                Text(model.isSubmitting ? "Sending…" : "Submit")
+                if model.isSubmitting {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "paperplane.fill")
+                }
+                Text(model.isSubmitting ? "Sending…" : "Send to HAVI")
                     .font(.headline)
             }
-            .frame(maxWidth: .infinity, minHeight: 50)
+            .frame(maxWidth: .infinity, minHeight: 52)
         }
         .buttonStyle(.borderedProminent)
         .tint(HaviMarkupCanvas.accent)
         .disabled(model.isSubmitting)
         .accessibilityIdentifier("havi-submit-button")
+    }
+
+    private func eyebrow(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.caption2.weight(.semibold))
+            .tracking(0.8)
+            .foregroundStyle(.secondary)
     }
 
     private func actionLabel(for kind: HaviSubmitFailureKind) -> String {
