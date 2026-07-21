@@ -19,7 +19,7 @@ public struct HaviSetupLink: Sendable, Equatable {
     }
 }
 
-public struct HaviConnectFailure: Sendable, Equatable {
+public struct HaviConnectFailure: Error, Sendable, Equatable {
     public let userMessage: String
 
     public init(userMessage: String) {
