@@ -17,6 +17,8 @@ struct HaviCaptureSheet: View {
     let onClose: () -> Void
 
     @State private var model: HaviCaptureModel
+    @State private var showConnect = false
+    @State private var connectReconnect = false
     @FocusState private var commentFocused: Bool
 
     init(session: HaviCaptureSession, runtime: HaviRuntime, onClose: @escaping () -> Void) {
@@ -42,6 +44,9 @@ struct HaviCaptureSheet: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
+                    if !runtime.isConnected {
+                        connectPrompt
+                    }
                     commentField
                     prioritySegments
                     if let failure = model.failure {
@@ -62,6 +67,26 @@ struct HaviCaptureSheet: View {
             .interactiveDismissDisabled(model.isSubmitting)
         }
         .onAppear { commentFocused = true }
+        .sheet(isPresented: $showConnect) {
+            HaviConnectSheet(runtime: runtime, reconnect: connectReconnect) {
+                showConnect = false
+            }
+        }
+    }
+
+    private var connectPrompt: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Not connected to HAVI yet.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button("Connect to HAVI") { openConnect(reconnect: false) }
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("havi-connect-prompt")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.blue.opacity(0.12)))
     }
 
     private var commentField: some View {
@@ -157,10 +182,13 @@ struct HaviCaptureSheet: View {
         }
     }
 
+    private func openConnect(reconnect: Bool) {
+        connectReconnect = reconnect
+        showConnect = true
+    }
+
     private func reconnect() {
-        // v1: no in-app device-code UI (design §5). Surface the reconnect intent
-        // by closing; the dev re-pastes a token via the hidden Settings row.
-        onClose()
+        openConnect(reconnect: true)
     }
 }
 #endif

@@ -8,6 +8,7 @@ final class HaviRuntime {
     let config: HaviConfig
     let tokenStore: HaviTokenStore
     let uploader: HaviUploader
+    let connectService: HaviConnectService
     var pendingPriority: HaviPriority?
 
     #if canImport(UIKit)
@@ -18,6 +19,15 @@ final class HaviRuntime {
         self.config = config
         self.tokenStore = tokenStore
         self.uploader = HaviUploader(config: config)
+        self.connectService = HaviConnectService(config: config, tokenStore: tokenStore)
+    }
+
+    /// Whether a usable credential resolves — a Keychain credential (manual paste
+    /// or device-code) or the stamped dev token + workspace. Drives whether the
+    /// capture sheet surfaces the connect prompt (design §5).
+    var isConnected: Bool {
+        if tokenStore.hasCredential { return true }
+        return config.workspaceID != nil && config.devToken != nil
     }
 
     #if canImport(UIKit)
