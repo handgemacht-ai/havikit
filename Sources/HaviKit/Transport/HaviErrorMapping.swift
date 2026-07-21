@@ -48,7 +48,7 @@ enum HaviErrorMapping {
         switch code {
         case "unauthorized":
             return .init(code: code, userMessage: "HAVI sign-in expired — reconnect.", action: .reauth)
-        case "missing_workspace_id", "invalid_workspace_id", "workspace_not_found":
+        case "workspace_required", "missing_workspace_id", "invalid_workspace_id", "workspace_not_found":
             return .init(code: code, userMessage: "HAVI workspace not set up — reconnect.", action: .reauth)
         case "forbidden":
             return .init(code: code, userMessage: "Not allowed for this workspace.", action: .terminal)
