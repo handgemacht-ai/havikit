@@ -38,11 +38,22 @@ public enum Havi {
         Task { @MainActor in capture(screen: screen) }
     }
 
-    /// Breadcrumb log ring — callable from any thread/actor. Also the v1
-    /// network-context path: RPC / network failures pushed here ride on the next
-    /// annotation's `app-logs` body.
+    /// Breadcrumb log ring — callable from any thread/actor. `error`-level entries
+    /// (with a non-`network` category) surface as the capture sheet's console-error
+    /// count and the annotation's `console-errors` describing body; the rest ride
+    /// in `app-logs`.
     public nonisolated static func log(_ message: String, level: HaviLogLevel = .info, category: String = "app") {
         HaviLogBuffer.shared.append(HaviLogEntry(level: level, category: category, message: message))
+    }
+
+    /// Records a network/RPC failure. Category `"network"` routes it to the capture
+    /// sheet's network-error count and the annotation's `network-errors` describing
+    /// body (mirroring the browser extension). Pass a preformatted
+    /// `"METHOD url status statusText"` line to match the web value shape.
+    public nonisolated static func logNetworkError(_ message: String) {
+        HaviLogBuffer.shared.append(
+            HaviLogEntry(level: .error, category: HaviDiagnostics.networkCategory, message: message)
+        )
     }
 
     /// Structured context, merged into `x:havi.contexts` and secret-scrubbed
