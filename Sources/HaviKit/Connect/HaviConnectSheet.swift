@@ -115,7 +115,7 @@ struct HaviConnectSheet: View {
 
     private var expiredCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("This link expired — links last 10 minutes.")
+            Text("This link is invalid or has expired.")
                 .font(.subheadline)
             Button("Get a new link") { model.start() }
                 .buttonStyle(.borderedProminent)
@@ -137,8 +137,7 @@ struct HaviConnectSheet: View {
     private var pasteFallback: some View {
         DisclosureGroup(isExpanded: $pasteExpanded) {
             VStack(alignment: .leading, spacing: 10) {
-                TextField("Bearer token", text: $model.pasteToken, axis: .vertical)
-                    .lineLimit(1...3)
+                SecureField("Bearer token", text: $model.pasteToken)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)

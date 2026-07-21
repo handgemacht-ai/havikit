@@ -116,9 +116,16 @@ public actor HaviConnectService {
     }
 
     /// Polls the exchange endpoint on `interval` until the developer approves, the
-    /// link's TTL passes (`expired`), or `isCancelled` flips (`cancelled`). A
-    /// transient blip keeps polling — the TTL bounds the loop — while a server
-    /// `setup_code_expired` / `_used` / `_not_found` short-circuits to `expired`.
+    /// link's TTL passes (`expired`), or the run is cancelled (`cancelled`) —
+    /// either the injected `isCancelled` flips or the enclosing task is cancelled.
+    /// A transient blip keeps polling — the TTL bounds the loop — while a server
+    /// `setup_code_expired` / `_used` / `_not_found` / `_revoked` short-circuits to
+    /// `expired`.
+    ///
+    /// `Task.isCancelled` is honored at every checkpoint so a re-entrant `start()`
+    /// that cancels this run's task stops the old loop even when the model's shared
+    /// cancel flag has already been reset for the new run — otherwise the stale loop
+    /// would keep polling and could double-store a token.
     public func runExchange(
         link: HaviSetupLink,
         interval: TimeInterval = 3,
@@ -129,17 +136,18 @@ public actor HaviConnectService {
         }
 
         while true {
-            if isCancelled() { return .cancelled }
+            if Task.isCancelled || isCancelled() { return .cancelled }
             if now() >= link.expiresAt { return .expired }
 
             switch await exchangeStep(baseURL: baseURL, deviceCode: link.deviceCode) {
             case .approved(let session):
+                if Task.isCancelled || isCancelled() { return .cancelled }
                 tokenStore.store(session)
                 return .connected(session)
             case .gone:
                 return .expired
             case .pending, .transient:
-                if isCancelled() { return .cancelled }
+                if Task.isCancelled || isCancelled() { return .cancelled }
                 await sleep(interval)
             }
         }
@@ -175,7 +183,7 @@ public actor HaviConnectService {
         if let decoded = try? snakeDecoder().decode(ErrorEnvelope.self, from: body),
            let code = decoded.error?.code {
             switch code {
-            case "setup_code_expired", "setup_code_used", "setup_code_not_found":
+            case "setup_code_expired", "setup_code_used", "setup_code_not_found", "setup_code_revoked":
                 return .gone
             default:
                 return .transient

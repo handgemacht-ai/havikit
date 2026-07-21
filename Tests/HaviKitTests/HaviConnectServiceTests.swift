@@ -141,6 +141,43 @@ final class HaviConnectServiceTests: XCTestCase {
         XCTAssertNil(store.accessToken)
     }
 
+    /// Re-entrant `start()`: the model cancels the old poll task but resets the
+    /// shared cancel flag for the new run, so the stale loop's injected
+    /// `isCancelled` reads `false`. Honoring `Task.isCancelled` must still stop the
+    /// old loop — otherwise it keeps polling concurrently and could double-store a
+    /// token. Here the flag stays `false`; only the task cancellation stops it.
+    func testTaskCancellationStopsStalePollDespiteResetFlag() async {
+        StubURLProtocol.reset()
+        // A zombie loop that ignored task cancellation would drain all of these.
+        for _ in 0..<8 { StubURLProtocol.enqueue(status: 202, json: pendingJSON) }
+
+        let store = HaviTokenStore(backing: HaviInMemoryCredentialBacking())
+        let enteredSleep = AsyncGate()
+        let service = HaviConnectService(
+            config: config(),
+            tokenStore: store,
+            session: stubSession(),
+            now: { Date(timeIntervalSince1970: 0) },
+            // Suspend between polls long enough for the test to cancel the task;
+            // cancellation cuts the sleep short and the loop re-checks isCancelled.
+            sleep: { _ in
+                enteredSleep.open()
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+            }
+        )
+
+        let task = Task {
+            await service.runExchange(link: link(), interval: 0, isCancelled: { false })
+        }
+        await enteredSleep.opened() // one poll done; the loop is parked between polls
+        task.cancel()
+
+        let result = await task.value
+        XCTAssertEqual(result, .cancelled)
+        XCTAssertEqual(StubURLProtocol.consumedCount, 1) // stopped after the first poll
+        XCTAssertNil(store.accessToken)
+    }
+
     // MARK: - Pure classify / parse seams
 
     func testClassifyExchange() {
@@ -156,6 +193,10 @@ final class HaviConnectServiceTests: XCTestCase {
         )
         XCTAssertEqual(
             HaviConnectService.classifyExchange(status: 409, body: Data(#"{"error":{"code":"setup_code_used"}}"#.utf8)),
+            .gone
+        )
+        XCTAssertEqual(
+            HaviConnectService.classifyExchange(status: 410, body: Data(#"{"error":{"code":"setup_code_revoked"}}"#.utf8)),
             .gone
         )
         XCTAssertEqual(HaviConnectService.classifyExchange(status: 500, body: Data("boom".utf8)), .transient)
@@ -212,5 +253,36 @@ final class CancelBox: @unchecked Sendable {
 
     func cancel() {
         lock.lock(); cancelled = true; lock.unlock()
+    }
+}
+
+/// A one-shot async latch: `opened()` suspends until the first `open()`, so a test
+/// can deterministically wait for the poll loop to reach its between-poll sleep
+/// before cancelling — no wall-clock sleeps in the assertions.
+final class AsyncGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func open() {
+        lock.lock()
+        isOpen = true
+        let pending = waiters
+        waiters.removeAll()
+        lock.unlock()
+        pending.forEach { $0.resume() }
+    }
+
+    func opened() async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if isOpen {
+                lock.unlock()
+                cont.resume()
+            } else {
+                waiters.append(cont)
+                lock.unlock()
+            }
+        }
     }
 }
