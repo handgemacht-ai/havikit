@@ -20,9 +20,9 @@ public final class HaviTokenStore: @unchecked Sendable {
 
     public init() {}
 
-    public var accessToken: String? { get(Key.accessToken) }
-    public var workspaceID: String? { get(Key.workspaceID) }
-    public var refreshToken: String? { get(Key.refreshToken) }
+    public var accessToken: String? { self.get(Key.accessToken) }
+    public var workspaceID: String? { self.get(Key.workspaceID) }
+    public var refreshToken: String? { self.get(Key.refreshToken) }
 
     public var expiresAt: Date? {
         guard let raw = get(Key.expiresAt), let seconds = TimeInterval(raw) else { return nil }
