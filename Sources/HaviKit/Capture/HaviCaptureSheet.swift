@@ -2,15 +2,16 @@
 import SwiftUI
 import UIKit
 
-/// The thumb-friendly capture sheet (design §2): the frozen screenshot with
-/// single-rectangle markup, an autofocused comment field, a 3-segment priority
-/// control (default from `Havi.setPriority`), and one submit button. On failure
-/// the sheet stays open — drawing + comment intact — with a plain-language reason
-/// mapped from `error.code` and a *Retry* (or *Reconnect HAVI* for auth) action;
-/// there is no silent drop and no disk queue.
+/// The capture sheet (design §2, markup v2 = bead havi-6953): the frozen
+/// screenshot with a multi-tool markup editor (pen / highlighter / arrow /
+/// rectangle / blur-redact / select, undo+redo, 6-color swatch), a diagnostics
+/// badge summarizing captured console/network errors, an autofocused comment
+/// field, a 3-segment priority control, and one submit button. On failure the
+/// sheet stays open — marks + comment intact — with a plain-language, `error.code`
+/// -mapped reason and a Retry (or Reconnect HAVI) action; no silent drop, no disk
+/// queue.
 ///
-/// Leaf-only accessibility identifiers, per the repo UI-test rule: the comment
-/// field, each priority segment, and submit — never a container.
+/// Leaf-only accessibility identifiers, per the repo UI-test rule.
 struct HaviCaptureSheet: View {
     let session: HaviCaptureSession
     let runtime: HaviRuntime
@@ -19,6 +20,7 @@ struct HaviCaptureSheet: View {
     @State private var model: HaviCaptureModel
     @State private var showConnect = false
     @State private var connectReconnect = false
+    @State private var showDiagnostics = false
     @FocusState private var commentFocused: Bool
 
     init(session: HaviCaptureSession, runtime: HaviRuntime, onClose: @escaping () -> Void) {
@@ -31,18 +33,9 @@ struct HaviCaptureSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    HaviMarkupCanvas(image: session.image, markupFraction: $model.markupFraction)
-                        .frame(maxHeight: 360)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-                        )
-
-                    Text("Drag on the screenshot to point at the bug.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 18) {
+                    markupEditor
+                    diagnosticsBadge
 
                     if !runtime.isConnected {
                         connectPrompt
@@ -72,6 +65,48 @@ struct HaviCaptureSheet: View {
                 showConnect = false
             }
         }
+        .sheet(isPresented: $showDiagnostics) {
+            HaviDiagnosticsDetailSheet(model: model) { showDiagnostics = false }
+        }
+    }
+
+    // MARK: - Markup
+
+    private var markupEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HaviMarkupToolbar(model: model.markup)
+                    .padding(.vertical, 2)
+            }
+            HaviMarkupCanvas(image: session.image, model: model.markup)
+                .frame(minHeight: 300, maxHeight: 520)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                )
+            HaviColorSwatchRow(model: model.markup)
+            Text(markupHint)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var markupHint: String {
+        switch model.markup.tool {
+        case .select: return "Tap a mark to select it, then drag to move or delete it."
+        case .blur: return "Drag over anything private — it's pixelated into the image before it's sent."
+        case .highlighter: return "Drag to highlight the area of the bug."
+        default: return "Draw on the screenshot to point at the bug."
+        }
+    }
+
+    private var diagnosticsBadge: some View {
+        HaviDiagnosticsBadgeRow(
+            consoleCount: model.consoleErrorCount,
+            networkCount: model.networkErrorCount,
+            onOpen: { showDiagnostics = true }
+        )
     }
 
     private var connectPrompt: some View {

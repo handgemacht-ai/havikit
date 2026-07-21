@@ -6,8 +6,11 @@ import Foundation
 /// and the `Image` body's `id`, so this omits them.
 ///
 /// Body order: comment → priority `tagging` → `describing` bodies
-/// (`device-info`, `app-logs`) → `{ "type": "Image" }` last. Selector order:
-/// `FragmentSelector` → `CssSelector` → `SvgSelector` (only when markup exists).
+/// (`device-info` → `console-errors` → `network-errors` → `app-logs`) →
+/// `{ "type": "Image" }` last. `console-errors` / `network-errors` mirror the
+/// browser extension's shape (`annotation-envelope.js`). Selector order:
+/// `FragmentSelector` → `CssSelector` → `SvgSelector` (only when markup exists;
+/// the value is the pre-serialized multi-mark `<svg>` from `HaviMarkupSerializer`).
 /// Omit-empty discipline throughout — any body / bucket / field that would be
 /// empty is dropped entirely (no `""`, `[]`, or `{}`).
 public enum HaviEnvelopeBuilder {
@@ -35,6 +38,14 @@ public enum HaviEnvelopeBuilder {
             body.append(describingBody(role: "device-info", value: deviceInfo))
         }
 
+        if let consoleErrors = nonEmpty(input.consoleErrors) {
+            body.append(describingBody(role: "console-errors", value: consoleErrors))
+        }
+
+        if let networkErrors = nonEmpty(input.networkErrors) {
+            body.append(describingBody(role: "network-errors", value: networkErrors))
+        }
+
         if let appLogs = nonEmpty(input.appLogs) {
             body.append(describingBody(role: "app-logs", value: appLogs))
         }
@@ -53,10 +64,10 @@ public enum HaviEnvelopeBuilder {
             ],
         ]
 
-        if let markup = input.markup {
+        if let markupSvg = nonEmpty(input.markupSvg) {
             selector.append([
                 "type": "SvgSelector",
-                "value": svgValue(markup, strokeColor: input.strokeColor, strokeWidth: input.strokeWidth),
+                "value": markupSvg,
             ])
         }
 
@@ -111,13 +122,6 @@ public enum HaviEnvelopeBuilder {
 
     private static func fragmentValue(_ rect: HaviRect) -> String {
         "xywh=\(rect.x),\(rect.y),\(rect.width),\(rect.height)"
-    }
-
-    private static func svgValue(_ rect: HaviRect, strokeColor: String, strokeWidth: Int) -> String {
-        "<svg xmlns=\"http://www.w3.org/2000/svg\">"
-            + "<rect x=\"\(rect.x)\" y=\"\(rect.y)\" width=\"\(rect.width)\" height=\"\(rect.height)\" "
-            + "fill=\"none\" stroke=\"\(strokeColor)\" stroke-width=\"\(strokeWidth)\"/>"
-            + "</svg>"
     }
 
     /// Single top-level `x:havi` object with the web's fixed buckets. `contexts`

@@ -3,12 +3,13 @@ import CoreGraphics
 import Observation
 import UIKit
 
-/// Drives one capture sheet (design §2): the drawn markup rectangle, comment,
-/// priority, and the submit lifecycle. Submit encodes + downscales the frozen
-/// still (§4), assembles the W3C envelope (§3) with markup projected into
-/// image-pixel space, snapshots the credential + context, and hands an immutable
-/// `PendingAnnotation` to the uploader actor. On failure the sheet stays open
-/// with the drawing/comment intact and an honest, `error.code`-mapped reason.
+/// Drives one capture sheet (design §2): the markup marks, comment, priority,
+/// captured diagnostics, and the submit lifecycle. Submit burns the blur/redact
+/// regions into the still, encodes + downscales it (§4), assembles the W3C
+/// envelope (§3) with the marks serialized into image-pixel space, snapshots the
+/// credential + context, and hands an immutable `PendingAnnotation` to the uploader
+/// actor. On failure the sheet stays open with the marks/comment intact and an
+/// honest, `error.code`-mapped reason.
 @MainActor
 @Observable
 final class HaviCaptureModel {
@@ -20,10 +21,17 @@ final class HaviCaptureModel {
 
     var comment: String = ""
     var priority: HaviPriority
-    /// Normalized (0…1, image space) markup rectangle, or nil when nothing is
-    /// drawn — then the `FragmentSelector` covers the full frame (§3).
-    var markupFraction: CGRect?
+    /// The multi-mark markup editor (bead havi-6953). Owned here so `submit`
+    /// serializes its marks into the envelope and burns its blur regions into the
+    /// pixels before encoding.
+    let markup = HaviMarkupModel()
     private(set) var phase: Phase = .editing
+
+    /// Diagnostics frozen at capture time so the badge, the detail sheet, and the
+    /// submitted envelope all describe the exact same breadcrumb snapshot.
+    let diagnostics: HaviDiagnostics.Split
+    var includeConsoleErrors = true
+    var includeNetworkErrors = true
 
     private let session: HaviCaptureSession
     private let runtime: HaviRuntime
@@ -32,9 +40,13 @@ final class HaviCaptureModel {
         self.session = session
         self.runtime = runtime
         self.priority = session.initialPriority
+        self.diagnostics = HaviDiagnostics.split(HaviLogBuffer.shared.snapshot())
     }
 
     var isSubmitting: Bool { phase == .submitting }
+
+    var consoleErrorCount: Int { diagnostics.consoleErrors.count }
+    var networkErrorCount: Int { diagnostics.networkErrors.count }
 
     var failure: HaviSubmitFailure? {
         if case .failed(let failure) = phase { return failure }
@@ -46,8 +58,15 @@ final class HaviCaptureModel {
         phase = .submitting
 
         let config = runtime.config
+        // Redaction is destructive and pre-byte: burn the blur marks into the
+        // full-res still first, so the encode and every re-encode fallback ship
+        // the redacted pixels — the un-redacted image never leaves the device.
+        let outgoing = HaviImageRedactor.burn(
+            blurRects: HaviMarkupSerializer.blurRects(of: markup.marks),
+            into: session.image
+        )
         guard let encoded = HaviImageRenderer.encodeWithSize(
-            session.image,
+            outgoing,
             format: config.imageFormat,
             maxBytes: config.imageFormat.maxUploadBytes
         ) else {
@@ -72,7 +91,7 @@ final class HaviCaptureModel {
                 imageFormat: config.imageFormat,
                 workspaceID: workspace,
                 bearerToken: token,
-                reencoder: HaviImageRenderer.reencoder(for: session.image)
+                reencoder: HaviImageRenderer.reencoder(for: outgoing)
             )
         } catch {
             phase = .failed(HaviSubmitFailure(
@@ -103,34 +122,40 @@ final class HaviCaptureModel {
     // MARK: - Envelope input
 
     private func buildInput(imageSize: HaviSize, config: HaviConfig) -> HaviEnvelopeInput {
-        let markupRect = markupFraction.flatMap { fraction -> HaviRect? in
-            guard HaviCaptureGeometry.isMeaningful(fraction: fraction) else { return nil }
-            return HaviCaptureGeometry.imagePixelRect(fraction: fraction, imageSize: imageSize)
-        }
-        let fragment = markupRect ?? HaviCaptureGeometry.fullFrameRect(imageSize: imageSize)
+        let marks = markup.marks
+        let markupSvg = HaviMarkupSerializer.svg(for: marks, imageSize: imageSize)
+        let fragment = HaviMarkupSerializer.boundingBox(of: marks, imageSize: imageSize)
+            ?? HaviCaptureGeometry.fullFrameRect(imageSize: imageSize)
 
-        let hint = markupFraction.flatMap { fraction -> String? in
-            guard HaviCaptureGeometry.isMeaningful(fraction: fraction) else { return nil }
+        let hint = HaviMarkupSerializer.normalizedBoundingBox(of: marks).flatMap { bounds -> String? in
             let center = CGPoint(
-                x: fraction.midX * CGFloat(session.viewport.width),
-                y: fraction.midY * CGFloat(session.viewport.height)
+                x: bounds.midX * CGFloat(session.viewport.width),
+                y: bounds.midY * CGFloat(session.viewport.height)
             )
             return HaviSnapshotter.nearestIdentifier(at: center, in: session.a11yFrames)
         }
 
-        let logs = HaviDeviceInfo.formatLogs(HaviLogBuffer.shared.snapshot())
+        let consoleErrors = includeConsoleErrors
+            ? nonEmpty(HaviDiagnostics.formatConsole(diagnostics.consoleErrors))
+            : nil
+        let networkErrors = includeNetworkErrors
+            ? nonEmpty(HaviDiagnostics.formatNetwork(diagnostics.networkErrors))
+            : nil
+        let appLogs = nonEmpty(HaviDeviceInfo.formatLogs(diagnostics.breadcrumbs))
 
         return HaviEnvelopeInput(
             bundleID: Bundle.main.bundleIdentifier ?? "unknown",
             screen: session.screen,
             viewport: session.viewport,
             fragment: fragment,
-            markup: markupRect,
+            markupSvg: markupSvg,
             cssPath: HaviCaptureGeometry.cssPath(screen: session.screen, hint: hint),
             comment: comment,
             priority: priority,
             deviceInfo: HaviDeviceInfo.current(orientation: session.orientation),
-            appLogs: logs.isEmpty ? nil : logs,
+            consoleErrors: consoleErrors,
+            networkErrors: networkErrors,
+            appLogs: appLogs,
             dev: HaviDev(
                 project: config.project,
                 worktree: config.worktree,
@@ -141,6 +166,8 @@ final class HaviCaptureModel {
             tags: HaviContextStore.shared.snapshotTags()
         )
     }
+
+    private func nonEmpty(_ value: String) -> String? { value.isEmpty ? nil : value }
 }
 
 extension HaviDeviceInfo {

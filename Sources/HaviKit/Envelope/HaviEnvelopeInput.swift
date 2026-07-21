@@ -51,55 +51,60 @@ public struct HaviEnvelopeInput: Sendable {
     public var bundleID: String
     public var screen: String
     public var viewport: HaviSize
-    /// The `FragmentSelector` region in image pixels — the markup rectangle or,
-    /// when there is no markup, the full frame.
+    /// The `FragmentSelector` region in image pixels — the bounding-box union of
+    /// the non-blur markup marks, or the full frame when there is no markup.
     public var fragment: HaviRect
-    /// The drawn rectangle in image pixels. When present it produces the
-    /// `SvgSelector`; when nil, no `SvgSelector` is emitted (design §3).
-    public var markup: HaviRect?
+    /// The pre-serialized `SvgSelector` value (`<svg>…</svg>`) holding every
+    /// non-blur mark in image-pixel space, built by `HaviMarkupSerializer`. When
+    /// nil, no `SvgSelector` is emitted (design §3).
+    public var markupSvg: String?
     /// Display-only `CssSelector` value: `"<screen> > <a11y-id path>"`.
     public var cssPath: String
     public var comment: String?
     public var priority: HaviPriority?
     public var deviceInfo: String?
+    /// Console-error breadcrumbs (`x:role` `console-errors`), or nil when empty or
+    /// excluded by the user's toggle.
+    public var consoleErrors: String?
+    /// Network/RPC-failure breadcrumbs (`x:role` `network-errors`), or nil when
+    /// empty or excluded by the user's toggle.
+    public var networkErrors: String?
     public var appLogs: String?
     public var dev: HaviDev
     public var contexts: [String: [String: String]]
     public var tags: [String: String]
-    public var strokeColor: String
-    public var strokeWidth: Int
 
     public init(
         bundleID: String,
         screen: String,
         viewport: HaviSize,
         fragment: HaviRect,
-        markup: HaviRect? = nil,
+        markupSvg: String? = nil,
         cssPath: String,
         comment: String? = nil,
         priority: HaviPriority? = nil,
         deviceInfo: String? = nil,
+        consoleErrors: String? = nil,
+        networkErrors: String? = nil,
         appLogs: String? = nil,
         dev: HaviDev = HaviDev(),
         contexts: [String: [String: String]] = [:],
-        tags: [String: String] = [:],
-        strokeColor: String = "#E8542F",
-        strokeWidth: Int = 6
+        tags: [String: String] = [:]
     ) {
         self.bundleID = bundleID
         self.screen = screen
         self.viewport = viewport
         self.fragment = fragment
-        self.markup = markup
+        self.markupSvg = markupSvg
         self.cssPath = cssPath
         self.comment = comment
         self.priority = priority
         self.deviceInfo = deviceInfo
+        self.consoleErrors = consoleErrors
+        self.networkErrors = networkErrors
         self.appLogs = appLogs
         self.dev = dev
         self.contexts = contexts
         self.tags = tags
-        self.strokeColor = strokeColor
-        self.strokeWidth = strokeWidth
     }
 }
