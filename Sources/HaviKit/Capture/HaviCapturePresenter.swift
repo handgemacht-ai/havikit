@@ -56,7 +56,10 @@ final class HaviCapturePresenter {
         confirmation = HaviSubmitConfirmation()
     }
 
-    func clearConfirmation() {
+    /// Clears the toast only when `id` still names the current confirmation, so a
+    /// stale toast's auto-dismiss timer can never clear a newer, back-to-back one.
+    func clearConfirmation(_ id: UUID) {
+        guard confirmation?.id == id else { return }
         confirmation = nil
     }
 }
