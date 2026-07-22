@@ -38,10 +38,15 @@ final class HaviRuntime {
     func presentCapture(screen: String?) {
         guard presenter.session == nil else { return }
         guard let snapshot = HaviSnapshotter.capture(policy: config.redaction) else { return }
-        let resolvedScreen = screen ?? HaviContextStore.shared.currentScreen() ?? "unknown"
+        // Screen name precedence: an explicit `Havi.capture(screen:)` argument, then
+        // the host's `.haviScreen(_:)` / `Havi.setScreen(_:)` context, then a
+        // best-effort auto-detected top view-controller name, then "unknown".
+        let resolvedScreen = screen
+            ?? HaviContextStore.shared.currentScreen()
+            ?? HaviSnapshotter.autoDetectedScreen()
+            ?? "unknown"
         presenter.present(HaviCaptureSession(
             image: snapshot.image,
-            viewport: snapshot.viewport,
             a11yFrames: snapshot.a11yFrames,
             orientation: snapshot.orientation,
             screen: resolvedScreen,

@@ -132,6 +132,32 @@ Optional annotations you can add anywhere in the view tree / app code:
   surface as the annotation's console/network describing bodies.
 - `Havi.capture(screen:)` — trigger capture programmatically.
 
+### Screen names (recommended)
+
+The screen name is the most valuable piece of routing metadata on an annotation:
+it becomes the `target.source` path (`app://<bundle-id>/<screen>`) and the
+`CssSelector` display value the HAVI dashboard groups and filters by. **Name your
+screens** so annotations arrive as `…/ReadingView` rather than `…/unknown`.
+
+Set it whichever way fits the host:
+
+- **SwiftUI** — attach `.haviScreen("ReadingView")` to each screen's root view.
+  It updates the current screen on appear.
+- **UIKit / navigation callbacks** — call `Havi.setScreen("ReadingView")` (e.g.
+  in `viewDidAppear`). Pass `nil` to clear. This is the imperative counterpart of
+  the modifier.
+- **Per-capture override** — `Havi.capture(screen: "ReadingView")` names just that
+  one capture.
+
+Precedence for a capture's screen name is: the explicit `capture(screen:)`
+argument → the host's `.haviScreen` / `Havi.setScreen` value → a best-effort
+**auto-detected** top view-controller class name → `"unknown"`. Auto-detection is
+a safety net only: it cannot name a plain `UIHostingController`/container (it
+falls through to `"unknown"` there), so a SwiftUI host that wants meaningful
+names must set one of the above. The reported viewport (`target.state`) is always
+derived on-device from the captured screenshot's own point size and needs no host
+cooperation.
+
 ## Testing
 
 ```bash

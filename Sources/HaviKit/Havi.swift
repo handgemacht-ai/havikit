@@ -68,6 +68,16 @@ public enum Havi {
         HaviContextStore.shared.setTag(key, value)
     }
 
+    /// Names the current screen for the next capture — becomes the annotation's
+    /// `target.source` path (`app://<bundle-id>/<screen>`) and the `CssSelector`
+    /// display value. The imperative counterpart of the `.haviScreen(_:)` SwiftUI
+    /// modifier, for UIKit hosts or navigation callbacks. Pass `nil` to clear.
+    /// Without any host call, the SDK falls back to best-effort auto-detection and
+    /// then "unknown".
+    public nonisolated static func setScreen(_ name: String?) {
+        HaviContextStore.shared.setScreen(name)
+    }
+
     /// Priority applied to the next capture (overridable in the sheet).
     @MainActor
     public static func setPriority(_ priority: HaviPriority?) {

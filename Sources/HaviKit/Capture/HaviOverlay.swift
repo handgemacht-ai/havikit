@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
+import UIKit
 
 /// The live capture host mounted by `.haviOverlay()` (design §2, §7). It wraps
 /// the app root so it sits over every auth state without touching their
@@ -23,6 +24,8 @@ private struct HaviOverlayActive<Content: View>: View {
     let runtime: HaviRuntime
     let content: Content
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         content
             .onPreferenceChange(HaviRedactionPreferenceKey.self) { regions in
@@ -35,6 +38,16 @@ private struct HaviOverlayActive<Content: View>: View {
                         .padding(20)
                 }
             }
+            .overlay(alignment: .top) {
+                if let confirmation = runtime.presenter.confirmation {
+                    HaviSubmitConfirmationToast(message: confirmation.message) {
+                        runtime.presenter.clearConfirmation()
+                    }
+                    .id(confirmation.id)
+                    .transition(.opacity)
+                }
+            }
+            .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: runtime.presenter.confirmation)
             .sheet(item: sheetBinding) { session in
                 HaviCaptureSheet(
                     session: session,
@@ -73,6 +86,43 @@ struct HaviFloatingCaptureButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Report to HAVI")
         .accessibilityIdentifier("havi-capture-button")
+    }
+}
+
+/// The brief "Report sent" confirmation shown after a successful submit (design
+/// §2, phone-QA finding 3): a frosted `.regularMaterial` pill with a system-green
+/// check, matching the connected-state success treatment. Auto-dismisses after a
+/// short window and announces itself to VoiceOver on appear.
+struct HaviSubmitConfirmationToast: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.headline)
+                .foregroundStyle(HaviMarkupCanvas.success)
+            Text(message)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(HaviMarkupCanvas.success.opacity(0.25), lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        .padding(.top, 12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(message)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityIdentifier("havi-submit-confirmation")
+        .onAppear {
+            UIAccessibility.post(notification: .announcement, argument: message)
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                onDismiss()
+            }
+        }
     }
 }
 #endif
