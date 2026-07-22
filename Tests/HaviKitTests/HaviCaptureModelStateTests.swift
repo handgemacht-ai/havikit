@@ -177,6 +177,25 @@ final class HaviCaptureModelStateTests: XCTestCase {
         XCTAssertTrue(model.canProceed, "cancelling the crop re-enables Next")
     }
 
+    // MARK: - Submit confirmation toast identity (QA m2)
+
+    /// Back-to-back submits: toast A's un-cancelled auto-dismiss timer must not
+    /// clear the newer toast B. The presenter only clears when the id still names
+    /// the current confirmation.
+    func testStaleToastTimerDoesNotClearANewerBackToBackToast() {
+        let presenter = HaviCapturePresenter()
+
+        presenter.confirmSubmission() // toast A
+        let staleID = presenter.confirmation!.id
+        presenter.confirmSubmission() // toast B replaces A
+
+        presenter.clearConfirmation(staleID) // A's stale timer fires late
+        XCTAssertNotNil(presenter.confirmation, "toast A's timer must not clear the newer toast B")
+
+        presenter.clearConfirmation(presenter.confirmation!.id) // B's own timer
+        XCTAssertNil(presenter.confirmation, "the matching timer clears its own toast")
+    }
+
     func testGoingBackToScreenOneAfterASubmitFailureKeepsMarksAndCropEditable() async {
         let model = makeModel()
         model.markup.selectTool(.rectangle)

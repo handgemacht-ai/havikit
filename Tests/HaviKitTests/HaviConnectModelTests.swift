@@ -158,6 +158,38 @@ final class HaviConnectModelTests: XCTestCase {
         XCTAssertFalse(model.browser.isPresented)
     }
 
+    /// Reconnect regression: the sheet opened with `reconnect: true` precisely
+    /// because the stored token was REJECTED (a 401 drove the reconnect). `onAppear`
+    /// must NOT reconcile the sheet back to `.connected` from that dead credential —
+    /// it must run a fresh pairing and only settle once a NEW token lands. On the
+    /// pre-fix branch `onAppear` reconciles straight to `.connected(stale)` and the
+    /// flow never starts, so the first assertion fails there.
+    func testReconnectDoesNotSettleConnectedFromRejectedTokenUntilFreshPairing() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.enqueue(status: 201, json: createLinkJSON) // createSetupLink
+        StubURLProtocol.enqueue(status: 202, json: pendingJSON)    // pending
+        StubURLProtocol.enqueue(status: 201, json: approvedJSON)   // approved → fresh token
+
+        let store = HaviTokenStore(backing: HaviInMemoryCredentialBacking())
+        store.store(HaviConnectedSession(accessToken: "stale-rejected", workspaceID: "ws-old"))
+
+        let model = stubbedModel(store: store) // reconnect: true, no-op sleep → runs to completion
+
+        model.onAppear()
+        if case .connected = model.phase {
+            return XCTFail("reconnect must not settle connected from the rejected credential")
+        }
+
+        await model.awaitFlowForTesting()
+
+        guard case .connected(let session) = model.phase else {
+            return XCTFail("expected connected after a fresh pairing, got \(model.phase)")
+        }
+        XCTAssertEqual(session.accessToken, "tok-abc", "settled on the FRESH token, not the rejected one")
+        XCTAssertEqual(session.workspaceID, "ws-9")
+        XCTAssertFalse(model.browser.isPresented)
+    }
+
     /// A repeat `onAppear` (SwiftUI re-running it when the in-app browser uncovers
     /// the sheet) must NOT mint a new code and orphan the approval the developer
     /// already gave — it must keep awaiting the SAME link with no extra network.

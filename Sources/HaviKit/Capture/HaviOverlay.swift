@@ -41,7 +41,7 @@ private struct HaviOverlayActive<Content: View>: View {
             .overlay(alignment: .top) {
                 if let confirmation = runtime.presenter.confirmation {
                     HaviSubmitConfirmationToast(message: confirmation.message) {
-                        runtime.presenter.clearConfirmation()
+                        runtime.presenter.clearConfirmation(confirmation.id)
                     }
                     .id(confirmation.id)
                     .transition(.opacity)
@@ -112,16 +112,16 @@ struct HaviSubmitConfirmationToast: View {
         .overlay(Capsule().strokeBorder(HaviMarkupCanvas.success.opacity(0.25), lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         .padding(.top, 12)
+        .allowsHitTesting(false)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(message)
         .accessibilityAddTraits(.isStaticText)
         .accessibilityIdentifier("havi-submit-confirmation")
-        .onAppear {
+        .task {
             UIAccessibility.post(notification: .announcement, argument: message)
-            Task {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                onDismiss()
-            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            onDismiss()
         }
     }
 }

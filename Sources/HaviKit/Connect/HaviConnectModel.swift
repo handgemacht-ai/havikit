@@ -43,14 +43,22 @@ final class HaviConnectModel {
     /// re-run it when the in-app browser covers and then uncovers the sheet) must
     /// not restart the flow and orphan the in-flight approval.
     private var didStart = false
+    /// The access token already in the store when the sheet opened to reconnect —
+    /// the credential the server just REJECTED (a 401 drives the reconnect flow).
+    /// `reconcileFromStore` must never settle the sheet back to this dead token;
+    /// only a FRESH pairing (a different token landing in the store, or this flow's
+    /// own poll) resolves the reconnect. `nil` in the normal connect flow.
+    private let rejectedToken: String?
 
     init(runtime: HaviRuntime, reconnect: Bool) {
         self.runtime = runtime
         if !reconnect, let session = runtime.tokenStore.connectedSession {
             self.phase = .connected(session)
             self.didStart = true
+            self.rejectedToken = nil
         } else {
             self.phase = .creating
+            self.rejectedToken = reconnect ? runtime.tokenStore.accessToken : nil
         }
     }
 
@@ -98,6 +106,10 @@ final class HaviConnectModel {
     private func reconcileFromStore() -> Bool {
         guard let session = runtime.tokenStore.connectedSession else { return false }
         if case .connected = phase { return true }
+        // The sheet opened to reconnect because THIS credential was rejected — a
+        // stale token still in the store must not settle it back to "connected".
+        // Only a fresh, different token resolves the reconnect.
+        if let rejectedToken, session.accessToken == rejectedToken { return false }
         cancelFlag.cancel()
         pollTask?.cancel()
         flowActive = false
@@ -111,7 +123,17 @@ final class HaviConnectModel {
     /// creates a new link. A no-op if already connected, a flow is live, or the
     /// link's TTL has passed.
     private func resumePollingIfNeeded() {
-        guard !flowActive, let link = pendingLink, Date() < link.expiresAt else { return }
+        guard !flowActive, let link = pendingLink else { return }
+        guard Date() < link.expiresAt else {
+            // The pending link outlived its TTL while the poll was stopped (system
+            // teardown while backgrounded). Surface the expired state — whose card
+            // offers "Get a new link" — instead of leaving the sheet stuck on a
+            // dead `.awaiting`.
+            pendingLink = nil
+            browser.flowSettled()
+            phase = .expired
+            return
+        }
         flowActive = true
         cancelFlag.reset()
         pollTask?.cancel()
