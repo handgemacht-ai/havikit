@@ -52,6 +52,22 @@ final class HaviCaptureModel {
 
     var isSubmitting: Bool { phase == .submitting }
 
+    /// The reported viewport (points) for `target.state` — taken from the captured
+    /// still's OWN point size (`image.size`) projected through any crop, never a
+    /// window size carried alongside the image. The still provably exists whenever
+    /// a capture happened, so the viewport can never degrade to a stale/zero value
+    /// (phone-QA finding 4).
+    var reportedViewport: HaviSize {
+        HaviCropGeometry.projectedViewport(stillPointSize, crop: crop.rect)
+    }
+
+    /// The still's own point size (uncropped). The a11y-hint center is placed in
+    /// this same window-point space the a11y frames were captured in.
+    private var stillPointSize: HaviSize {
+        let size = session.image.size
+        return HaviSize(width: Int(size.width.rounded()), height: Int(size.height.rounded()))
+    }
+
     /// Whether the flow may advance to Screen 2. Crop is a confirmed step, so an
     /// open crop draft (`crop.isEditing`) must be confirmed or cancelled first —
     /// advancing with a live, unconfirmed crop would bypass the very confirmation
@@ -154,7 +170,7 @@ final class HaviCaptureModel {
         case .success:
             HaviLogBuffer.shared.clear()
             runtime.pendingPriority = nil
-            runtime.presenter.dismiss()
+            runtime.presenter.confirmSubmission()
         case .failure(let failure):
             phase = .failed(failure)
         }
@@ -179,10 +195,11 @@ final class HaviCaptureModel {
         // not the crop-relative `marks` used for the fragment/svg above.
         let survivingIDs = Set(marks.map(\.id))
         let hintSourceMarks = markup.marks.filter { survivingIDs.contains($0.id) }
+        let stillSize = stillPointSize
         let hint = HaviMarkupSerializer.normalizedBoundingBox(of: hintSourceMarks).flatMap { bounds -> String? in
             let center = CGPoint(
-                x: bounds.midX * CGFloat(session.viewport.width),
-                y: bounds.midY * CGFloat(session.viewport.height)
+                x: bounds.midX * CGFloat(stillSize.width),
+                y: bounds.midY * CGFloat(stillSize.height)
             )
             return HaviSnapshotter.nearestIdentifier(at: center, in: session.a11yFrames)
         }
@@ -198,7 +215,7 @@ final class HaviCaptureModel {
         return HaviEnvelopeInput(
             bundleID: Bundle.main.bundleIdentifier ?? "unknown",
             screen: session.screen,
-            viewport: HaviCropGeometry.projectedViewport(session.viewport, crop: cropRect),
+            viewport: HaviCropGeometry.projectedViewport(stillSize, crop: cropRect),
             fragment: fragment,
             markupSvg: markupSvg,
             cssPath: HaviCaptureGeometry.cssPath(screen: session.screen, hint: hint),

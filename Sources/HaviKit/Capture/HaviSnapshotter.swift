@@ -2,12 +2,11 @@
 import UIKit
 
 /// The frozen key-window capture for one shake→sheet cycle (design §2). Carries
-/// the redacted still, the logical viewport (points), the a11y-id frames used to
-/// derive the display-only `CssSelector`, and the interface orientation for the
-/// `device-info` body.
+/// the redacted still (whose own point size is the reported viewport), the a11y-id
+/// frames used to derive the display-only `CssSelector`, and the interface
+/// orientation for the `device-info` body.
 struct HaviSnapshot {
     let image: UIImage
-    let viewport: HaviSize
     let a11yFrames: [HaviA11yFrame]
     let orientation: String
 }
@@ -55,10 +54,33 @@ enum HaviSnapshotter {
 
         return HaviSnapshot(
             image: image,
-            viewport: HaviSize(width: Int(bounds.width.rounded()), height: Int(bounds.height.rounded())),
             a11yFrames: a11yFrames,
             orientation: orientationName(for: window)
         )
+    }
+
+    /// Best-effort screen name when the host set none via `.haviScreen(_:)` /
+    /// `Havi.setScreen(_:)`: the class name of the top-most visible view
+    /// controller. Generic container/hosting controllers (which carry no useful
+    /// name — the SwiftUI case) resolve to `nil` so the caller falls through to
+    /// "unknown" rather than reporting "UIHostingController".
+    static func autoDetectedScreen() -> String? {
+        guard let root = keyWindow()?.rootViewController else { return nil }
+        let top = topMostViewController(root)
+        return HaviScreenName.screen(forControllerType: String(reflecting: type(of: top)))
+    }
+
+    private static func topMostViewController(_ controller: UIViewController) -> UIViewController {
+        if let presented = controller.presentedViewController {
+            return topMostViewController(presented)
+        }
+        if let nav = controller as? UINavigationController, let visible = nav.visibleViewController {
+            return topMostViewController(visible)
+        }
+        if let tab = controller as? UITabBarController, let selected = tab.selectedViewController {
+            return topMostViewController(selected)
+        }
+        return controller
     }
 
     /// The smallest a11y-id frame that contains `point` (window points), or nil —

@@ -12,14 +12,13 @@ import XCTest
 /// makes the Back round trip lossless.
 @MainActor
 final class HaviCaptureModelStateTests: XCTestCase {
-    private func makeModel() -> HaviCaptureModel {
-        let image = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 40)).image { context in
+    private func makeModel(imageSize: CGSize = CGSize(width: 20, height: 40)) -> HaviCaptureModel {
+        let image = UIGraphicsImageRenderer(size: imageSize).image { context in
             UIColor.red.setFill()
-            context.fill(CGRect(x: 0, y: 0, width: 20, height: 40))
+            context.fill(CGRect(origin: .zero, size: imageSize))
         }
         let session = HaviCaptureSession(
             image: image,
-            viewport: HaviSize(width: 20, height: 40),
             a11yFrames: [],
             orientation: "portrait",
             screen: "ReaderScreen",
@@ -53,6 +52,30 @@ final class HaviCaptureModelStateTests: XCTestCase {
         XCTAssertEqual(model.priority, .high)
         XCTAssertFalse(model.includeNetworkErrors)
         XCTAssertTrue(model.includeConsoleErrors)
+    }
+
+    // MARK: - Viewport comes from the captured still (phone-QA finding 4)
+
+    func testViewportComesFromTheCapturedStillPointSize() {
+        // The session carries no separate viewport — the reported viewport must be
+        // the still's own point size, so it can never degrade to unknown/zero when
+        // a real screenshot exists.
+        let model = makeModel(imageSize: CGSize(width: 393, height: 852))
+        XCTAssertEqual(model.reportedViewport, HaviSize(width: 393, height: 852))
+    }
+
+    func testReportedViewportTracksAConfirmedCrop() {
+        let model = makeModel(imageSize: CGSize(width: 400, height: 800))
+        XCTAssertEqual(model.reportedViewport, HaviSize(width: 400, height: 800))
+
+        // Crop to the middle half on each axis (like the golden "cropped" case):
+        // the reported viewport projects proportionally into the cropped still.
+        model.beginCropEditing(previousTool: .pen)
+        model.crop.updateResize(handle: .topLeft, to: CGPoint(x: 0.25, y: 0.25))
+        model.crop.updateResize(handle: .bottomRight, to: CGPoint(x: 0.75, y: 0.75))
+        model.confirmCrop()
+
+        XCTAssertEqual(model.reportedViewport, HaviSize(width: 200, height: 400))
     }
 
     func testCropDefaultsToFullFrameAndResetRestoresIt() {
