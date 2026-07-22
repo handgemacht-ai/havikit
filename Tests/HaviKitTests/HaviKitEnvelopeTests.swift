@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 @testable import HaviKit
 
@@ -38,6 +39,34 @@ final class HaviKitEnvelopeTests: XCTestCase {
     func testMarkupMultiEnvelopeMatchesGolden() throws {
         try assertMatchesGolden("markup-multi", Self.markupMultiInput)
         XCTAssertEqual(HaviEnvelopeBuilder.siblings(Self.markupMultiInput), try GoldenFixture.siblings("markup-multi"))
+    }
+
+    func testCroppedEnvelopeMatchesGolden() throws {
+        try assertMatchesGolden("cropped", Self.croppedInput)
+        XCTAssertEqual(HaviEnvelopeBuilder.siblings(Self.croppedInput), try GoldenFixture.siblings("cropped"))
+    }
+
+    /// Proves `croppedInput`'s fragment/viewport/svg are exactly what the crop
+    /// pipeline (bead havi-oukr) would produce from the marks + crop rect it
+    /// describes — not just numbers that happen to match the golden by hand.
+    /// A second mark drawn fully outside the crop is dropped and has no
+    /// envelope side effect, matching the golden case's description.
+    func testCroppedInputMatchesCropPipelineProjection() {
+        let crop = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        let originalViewport = HaviSize(width: 400, height: 800)
+        let originalImageSize = HaviSize(width: 800, height: 1600)
+        let inside = HaviMark(shape: .rectangle(CGRect(x: 0.4, y: 0.4, width: 0.2, height: 0.1)), color: .red)
+        let outside = HaviMark(shape: .rectangle(CGRect(x: 0.85, y: 0.85, width: 0.1, height: 0.1)), color: .blue)
+
+        let projected = HaviCropGeometry.projectMarks([inside, outside], into: crop)
+        XCTAssertEqual(projected.count, 1, "the fully-outside mark is dropped")
+
+        let croppedImageSize = HaviCropGeometry.projectedImageSize(originalImageSize, crop: crop)
+        let croppedViewport = HaviCropGeometry.projectedViewport(originalViewport, crop: crop)
+        XCTAssertEqual(croppedImageSize, HaviSize(width: 400, height: 800))
+        XCTAssertEqual(croppedViewport, Self.croppedInput.viewport)
+        XCTAssertEqual(HaviMarkupSerializer.boundingBox(of: projected, imageSize: croppedImageSize), Self.croppedInput.fragment)
+        XCTAssertEqual(HaviMarkupSerializer.svg(for: projected, imageSize: croppedImageSize), Self.croppedInput.markupSvg)
     }
 
     func testCommitRidesInDevButNotSiblings() {
@@ -180,5 +209,17 @@ final class HaviKitEnvelopeTests: XCTestCase {
         comment: "Circled the glitchy card and boxed the button",
         priority: .medium,
         dev: HaviDev(project: "lesewerkstatt", worktree: "markup-multi", branch: "markup-multi")
+    )
+
+    static let croppedInput = HaviEnvelopeInput(
+        bundleID: "ai.handgemacht.lesewerkstatt.dev",
+        screen: "ReaderScreen",
+        viewport: HaviSize(width: 200, height: 400),
+        fragment: HaviRect(x: 120, y: 240, width: 160, height: 160),
+        markupSvg: "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"120\" y=\"240\" width=\"160\" height=\"160\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\"/></svg>",
+        cssPath: "ReaderScreen",
+        comment: "Cropped to the card before flagging the glitch",
+        priority: .medium,
+        dev: HaviDev(project: "lesewerkstatt", worktree: "capture-two-screen", branch: "capture-two-screen")
     )
 }
