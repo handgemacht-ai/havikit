@@ -211,4 +211,37 @@ enum HaviCropGeometry {
         let relative = project(point, into: visibleRegion)
         return CGPoint(x: relative.x * contentSize.width, y: relative.y * contentSize.height)
     }
+
+    // MARK: - Zoom-aware gesture thresholds (visible-region-relative)
+
+    /// Whether `mark` is a deliberate mark rather than an accidental tap, judged
+    /// by its **on-screen** extent. The mark is first projected into
+    /// `visibleRegion`'s own 0…1 space, so `minMarkupFraction` always means the
+    /// same fraction of the visible (possibly zoomed) view: a small but
+    /// deliberate mark drawn into a tight crop is no longer discarded, and a stray
+    /// tap at any zoom still is. With `visibleRegion == fullFrame` the projection
+    /// is the identity, so the result is byte-identical to the pre-zoom check.
+    static func isMeaningfulMark(_ mark: HaviMark, visibleRegion: CGRect) -> Bool {
+        switch project(mark, into: visibleRegion).shape {
+        case .pen(let points), .highlighter(let points):
+            return points.count >= 2 && markSpan(points) >= HaviCaptureGeometry.minMarkupFraction
+        case .arrow(let from, let to):
+            return hypot(to.x - from.x, to.y - from.y) >= HaviCaptureGeometry.minMarkupFraction
+        case .rectangle(let rect), .blur(let rect):
+            return HaviCaptureGeometry.isMeaningful(fraction: rect.standardized)
+        }
+    }
+
+    /// The select-tool hit test made zoom-aware: both the tap `point` and the
+    /// `mark` are projected into `visibleRegion`'s own 0…1 space, so the fixed
+    /// `tolerance` covers the same **on-screen** distance at any zoom. Identity
+    /// when `visibleRegion == fullFrame`.
+    static func markHitTest(_ mark: HaviMark, at point: CGPoint, tolerance: CGFloat, visibleRegion: CGRect) -> Bool {
+        project(mark, into: visibleRegion).hitTest(project(point, into: visibleRegion), tolerance: tolerance)
+    }
+
+    private static func markSpan(_ points: [CGPoint]) -> CGFloat {
+        let bounds = HaviMark.bounds(of: points)
+        return max(bounds.width, bounds.height)
+    }
 }

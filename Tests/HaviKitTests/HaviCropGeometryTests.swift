@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import XCTest
 @testable import HaviKit
 
@@ -214,5 +215,116 @@ final class HaviCropGeometryTests: XCTestCase {
         let outside = HaviCropGeometry.canvasFromNormalized(CGPoint(x: 0.9, y: 0.9), contentSize: contentSize, visibleRegion: region)
         XCTAssertGreaterThan(outside.x, contentSize.width, "a mark outside the crop is off-canvas and gets clipped by the content bounds")
         XCTAssertGreaterThan(outside.y, contentSize.height)
+    }
+
+    // MARK: - Zoom-aware gesture thresholds (meaningfulness + hit test)
+
+    /// A 10x zoom (the minCropFraction extreme): the visible region is a tenth of
+    /// the still on each axis, so 5% of the visible view is only 0.5% of the still.
+    private let zoom10x = CGRect(x: 0.4, y: 0.4, width: 0.1, height: 0.1)
+
+    func testFreehandMeaningfulnessScalesWithZoom() {
+        // A pen stroke spanning ~5% of the VISIBLE region: 0.05 on screen, which
+        // is only 0.005 in full-still space at this zoom.
+        let mark = HaviMark(shape: .pen(points: [CGPoint(x: 0.42, y: 0.42), CGPoint(x: 0.425, y: 0.42)]), color: .red)
+
+        XCTAssertFalse(
+            HaviCropGeometry.isMeaningfulMark(mark, visibleRegion: HaviCropGeometry.fullFrame),
+            "the same full-still span (0.005) is a stray tap when unzoomed and must be discarded"
+        )
+        XCTAssertTrue(
+            HaviCropGeometry.isMeaningfulMark(mark, visibleRegion: zoom10x),
+            "a deliberate 5%-of-screen mark drawn while zoomed must survive release"
+        )
+    }
+
+    func testRectangleMeaningfulnessScalesWithZoom() {
+        // 0.005 x 0.005 of the still == 5% x 5% of the visible region at 10x.
+        let mark = HaviMark(shape: .rectangle(CGRect(x: 0.42, y: 0.42, width: 0.005, height: 0.005)), color: .red)
+
+        XCTAssertFalse(HaviCropGeometry.isMeaningfulMark(mark, visibleRegion: HaviCropGeometry.fullFrame))
+        XCTAssertTrue(HaviCropGeometry.isMeaningfulMark(mark, visibleRegion: zoom10x))
+    }
+
+    func testStrayTapIsStillRejectedEvenWhenZoomed() {
+        // 0.5% of the visible region — below threshold at any zoom.
+        let mark = HaviMark(shape: .pen(points: [CGPoint(x: 0.42, y: 0.42), CGPoint(x: 0.4205, y: 0.42)]), color: .red)
+        XCTAssertFalse(HaviCropGeometry.isMeaningfulMark(mark, visibleRegion: zoom10x))
+    }
+
+    func testHitTestToleranceScalesWithZoomToDisambiguateNearbyMarks() {
+        // Two tiny marks 0.02 apart in full-still space, both inside the crop; a
+        // tap lands on A. Unzoomed the 0.03 slop is coarse enough to reach both;
+        // zoomed it stays a fraction of the visible region, so only A is hit.
+        let a = HaviMark(shape: .rectangle(CGRect(x: 0.438, y: 0.448, width: 0.004, height: 0.004)), color: .red)
+        let b = HaviMark(shape: .rectangle(CGRect(x: 0.458, y: 0.448, width: 0.004, height: 0.004)), color: .red)
+        let tap = CGPoint(x: 0.44, y: 0.45)
+        let tolerance: CGFloat = 0.03
+
+        XCTAssertTrue(HaviCropGeometry.markHitTest(a, at: tap, tolerance: tolerance, visibleRegion: HaviCropGeometry.fullFrame))
+        XCTAssertTrue(
+            HaviCropGeometry.markHitTest(b, at: tap, tolerance: tolerance, visibleRegion: HaviCropGeometry.fullFrame),
+            "unzoomed the fixed slop reaches the neighbour too — the ambiguity the zoom-aware path fixes"
+        )
+
+        XCTAssertTrue(HaviCropGeometry.markHitTest(a, at: tap, tolerance: tolerance, visibleRegion: zoom10x))
+        XCTAssertFalse(
+            HaviCropGeometry.markHitTest(b, at: tap, tolerance: tolerance, visibleRegion: zoom10x),
+            "zoomed the slop is region-relative, so the tap no longer selects the wrong mark"
+        )
+    }
+
+    // MARK: - Uncropped identity (full frame == byte-identical to the pre-zoom rule)
+
+    /// The pre-zoom meaningfulness rule, reproduced verbatim, so the uncropped
+    /// (full-frame) path can be proven byte-identical to it across a battery.
+    private func legacyIsMeaningful(_ mark: HaviMark) -> Bool {
+        switch mark.shape {
+        case .pen(let points), .highlighter(let points):
+            let bounds = HaviMark.bounds(of: points)
+            return points.count >= 2 && max(bounds.width, bounds.height) >= HaviCaptureGeometry.minMarkupFraction
+        case .arrow(let from, let to):
+            return hypot(to.x - from.x, to.y - from.y) >= HaviCaptureGeometry.minMarkupFraction
+        case .rectangle(let rect), .blur(let rect):
+            return HaviCaptureGeometry.isMeaningful(fraction: rect.standardized)
+        }
+    }
+
+    func testUncroppedMeaningfulnessIsByteIdenticalToThePreZoomRule() {
+        let marks: [HaviMark] = [
+            HaviMark(shape: .pen(points: [CGPoint(x: 0.1, y: 0.1), CGPoint(x: 0.109, y: 0.1)]), color: .red),   // span 0.009, just under
+            HaviMark(shape: .pen(points: [CGPoint(x: 0.1, y: 0.1), CGPoint(x: 0.111, y: 0.1)]), color: .red),   // span 0.011, just over
+            HaviMark(shape: .pen(points: [CGPoint(x: 0.1, y: 0.1)]), color: .red),                              // single point
+            HaviMark(shape: .arrow(from: CGPoint(x: 0.2, y: 0.2), to: CGPoint(x: 0.205, y: 0.205)), color: .red),
+            HaviMark(shape: .arrow(from: CGPoint(x: 0.2, y: 0.2), to: CGPoint(x: 0.25, y: 0.25)), color: .red),
+            HaviMark(shape: .rectangle(CGRect(x: 0.3, y: 0.3, width: 0.009, height: 0.2)), color: .red),        // one axis under
+            HaviMark(shape: .rectangle(CGRect(x: 0.3, y: 0.3, width: 0.02, height: 0.02)), color: .red),
+            HaviMark(shape: .blur(CGRect(x: 0.5, y: 0.5, width: 0.005, height: 0.005)), color: .black),
+        ]
+        for mark in marks {
+            XCTAssertEqual(
+                HaviCropGeometry.isMeaningfulMark(mark, visibleRegion: HaviCropGeometry.fullFrame),
+                legacyIsMeaningful(mark),
+                "full-frame meaningfulness must match the pre-zoom rule for \(mark.shape)"
+            )
+        }
+    }
+
+    func testUncroppedHitTestIsByteIdenticalToTheRawMarkHitTest() {
+        let mark = HaviMark(shape: .rectangle(CGRect(x: 0.3, y: 0.3, width: 0.2, height: 0.2)), color: .red)
+        let tolerance: CGFloat = 0.03
+        let points = [
+            CGPoint(x: 0.4, y: 0.4),    // inside
+            CGPoint(x: 0.28, y: 0.4),   // just outside, within slop
+            CGPoint(x: 0.5, y: 0.5),    // on the far corner
+            CGPoint(x: 0.0, y: 0.0),    // far outside
+        ]
+        for point in points {
+            XCTAssertEqual(
+                HaviCropGeometry.markHitTest(mark, at: point, tolerance: tolerance, visibleRegion: HaviCropGeometry.fullFrame),
+                mark.hitTest(point, tolerance: tolerance),
+                "full-frame hit test must equal the raw pre-zoom hitTest at \(point)"
+            )
+        }
     }
 }

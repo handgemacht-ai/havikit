@@ -30,6 +30,11 @@ final class HaviMarkupModel {
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
 
+    /// Select-tool hit-test slop, a fraction of the **visible** region — a tap
+    /// selects the same on-screen distance whether or not the canvas is zoomed
+    /// into a confirmed crop.
+    static let selectHitTolerance: CGFloat = 0.03
+
     var selectedMark: HaviMark? {
         guard let id = selectedMarkID else { return nil }
         return marks.first { $0.id == id }
@@ -42,7 +47,7 @@ final class HaviMarkupModel {
 
     // MARK: - Gestures (points are already normalized 0…1 by the canvas)
 
-    func begin(at point: CGPoint) {
+    func begin(at point: CGPoint, region: CGRect = HaviCropGeometry.fullFrame) {
         switch tool {
         case .pen:
             inProgress = HaviMark(shape: .pen(points: [point]), color: color)
@@ -57,7 +62,7 @@ final class HaviMarkupModel {
             anchor = point
             inProgress = HaviMark(shape: .blur(CGRect(origin: point, size: .zero)), color: color)
         case .select:
-            beginSelectOrMove(at: point)
+            beginSelectOrMove(at: point, region: region)
         case .crop:
             break
         }
@@ -86,13 +91,14 @@ final class HaviMarkupModel {
         inProgress = mark
     }
 
-    func end() {
+    func end(region: CGRect = HaviCropGeometry.fullFrame) {
         guard tool.isDrawing else {
             endMove()
             return
         }
         defer { inProgress = nil; anchor = nil }
-        guard let mark = inProgress, HaviMarkupModel.isMeaningful(mark) else { return }
+        guard let mark = inProgress,
+              HaviCropGeometry.isMeaningfulMark(mark, visibleRegion: region) else { return }
         commit(marks + [mark])
         selectedMarkID = nil
     }
@@ -119,8 +125,10 @@ final class HaviMarkupModel {
 
     // MARK: - Select / move
 
-    private func beginSelectOrMove(at point: CGPoint) {
-        if let hit = marks.last(where: { $0.hitTest(point, tolerance: 0.03) }) {
+    private func beginSelectOrMove(at point: CGPoint, region: CGRect) {
+        if let hit = marks.last(where: {
+            HaviCropGeometry.markHitTest($0, at: point, tolerance: Self.selectHitTolerance, visibleRegion: region)
+        }) {
             selectedMarkID = hit.id
             moveSnapshot = marks
             moveLast = point
@@ -155,24 +163,6 @@ final class HaviMarkupModel {
 
     static func rect(from a: CGPoint, to b: CGPoint) -> CGRect {
         CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
-    }
-
-    /// An accidental tap (near-zero drag) is not a mark. Freehand needs at least
-    /// two points; the geometric tools need a non-trivial extent.
-    static func isMeaningful(_ mark: HaviMark) -> Bool {
-        switch mark.shape {
-        case .pen(let points), .highlighter(let points):
-            return points.count >= 2 && span(points) >= HaviCaptureGeometry.minMarkupFraction
-        case .arrow(let from, let to):
-            return hypot(to.x - from.x, to.y - from.y) >= HaviCaptureGeometry.minMarkupFraction
-        case .rectangle(let rect), .blur(let rect):
-            return HaviCaptureGeometry.isMeaningful(fraction: rect.standardized)
-        }
-    }
-
-    private static func span(_ points: [CGPoint]) -> CGFloat {
-        let bounds = HaviMark.bounds(of: points)
-        return max(bounds.width, bounds.height)
     }
 }
 #endif

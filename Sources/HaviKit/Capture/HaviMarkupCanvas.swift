@@ -176,12 +176,12 @@ struct HaviMarkupCanvas: View {
                     model.extend(to: point)
                 } else {
                     strokeActive = true
-                    model.begin(at: point)
+                    model.begin(at: point, region: region)
                 }
             }
             .onEnded { _ in
                 strokeActive = false
-                model.end()
+                model.end(region: region)
             }
     }
 
