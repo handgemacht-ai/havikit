@@ -109,6 +109,12 @@ enum HaviCropGeometry {
         return CGPoint(x: (point.x - crop.minX) / crop.width, y: (point.y - crop.minY) / crop.height)
     }
 
+    /// Inverse of `project`: a crop-relative-normalized point back into the
+    /// full-image 0…1 space.
+    static func unproject(_ point: CGPoint, from crop: CGRect) -> CGPoint {
+        CGPoint(x: crop.minX + point.x * crop.width, y: crop.minY + point.y * crop.height)
+    }
+
     private static func project(_ rect: CGRect, into crop: CGRect) -> CGRect {
         let standardized = rect.standardized
         let origin = project(CGPoint(x: standardized.minX, y: standardized.minY), into: crop)
@@ -174,5 +180,35 @@ enum HaviCropGeometry {
             width: max(1, Int((CGFloat(imageSize.width) * clampedCrop.width).rounded())),
             height: max(1, Int((CGFloat(imageSize.height) * clampedCrop.height).rounded()))
         )
+    }
+
+    // MARK: - Display transform (canvas point ↔ full-image normalized)
+
+    /// The display transform that lets the canvas show ONLY a `visibleRegion` of
+    /// the full still, scaled up to fill a content rect of `contentSize` points.
+    /// Marks and gestures always speak full-image normalized space (0…1 over the
+    /// whole still); these two functions are the only bridge to canvas points,
+    /// so the stored geometry — and the submit pipeline that reads it — is
+    /// untouched by the zoom. When `visibleRegion` is the full frame both reduce
+    /// to the plain point ÷ size mapping the canvas used before the zoom existed.
+
+    /// A content-local canvas point (0…`contentSize`) → full-image normalized
+    /// point, clamped to `visibleRegion` so a mark drawn in the zoomed view can
+    /// never land outside what is shown.
+    static func normalizedFromCanvas(_ point: CGPoint, contentSize: CGSize, visibleRegion: CGRect) -> CGPoint {
+        guard contentSize.width > 0, contentSize.height > 0 else { return visibleRegion.origin }
+        let relative = CGPoint(
+            x: min(max(0, point.x / contentSize.width), 1),
+            y: min(max(0, point.y / contentSize.height), 1)
+        )
+        return unproject(relative, from: visibleRegion)
+    }
+
+    /// A full-image normalized point → content-local canvas point within the
+    /// zoomed `visibleRegion`. Points outside the region land outside
+    /// `0…contentSize` and are clipped by the content view's bounds.
+    static func canvasFromNormalized(_ point: CGPoint, contentSize: CGSize, visibleRegion: CGRect) -> CGPoint {
+        let relative = project(point, into: visibleRegion)
+        return CGPoint(x: relative.x * contentSize.width, y: relative.y * contentSize.height)
     }
 }

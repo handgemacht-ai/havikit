@@ -46,7 +46,33 @@ final class HaviCaptureModel {
         self.diagnostics = HaviDiagnostics.split(HaviLogBuffer.shared.snapshot())
     }
 
+    /// The drawing tool to restore when crop mode ends, so confirming/cancelling
+    /// a crop returns the user to the tool they were annotating with.
+    private var toolBeforeCrop: HaviMarkTool = .pen
+
     var isSubmitting: Bool { phase == .submitting }
+
+    // MARK: - Crop mode (bead havi-od6t)
+
+    /// Opens crop mode: remembers the tool to return to and snapshots the crop so
+    /// Cancel can revert. Called when the crop tool becomes active.
+    func beginCropEditing(previousTool: HaviMarkTool) {
+        if previousTool != .crop { toolBeforeCrop = previousTool }
+        crop.beginEditing()
+    }
+
+    /// Keeps the drafted crop, zooms the canvas into it, and returns to the
+    /// prior drawing tool.
+    func confirmCrop() {
+        crop.confirm()
+        markup.selectTool(toolBeforeCrop)
+    }
+
+    /// Reverts to the last confirmed crop and returns to the prior drawing tool.
+    func cancelCrop() {
+        crop.cancel()
+        markup.selectTool(toolBeforeCrop)
+    }
 
     var consoleErrorCount: Int { diagnostics.consoleErrors.count }
     var networkErrorCount: Int { diagnostics.networkErrors.count }
