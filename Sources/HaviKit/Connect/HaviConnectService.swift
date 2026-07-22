@@ -208,10 +208,30 @@ public actor HaviConnectService {
     /// `/connect/approve?setup_code=<code>`) against the configured base URL — the
     /// single place the absolute sign-in URL is built, so the path is never
     /// hardcoded. The absolute leading-slash path replaces the base's own path, so
-    /// a base with or without a trailing slash resolves identically; an
-    /// already-absolute `approve_url` is returned unchanged.
+    /// a base with or without a trailing slash resolves identically.
+    ///
+    /// Defense-in-depth: the resolved URL is only accepted when it is same-origin
+    /// with the configured base. Anything else (an absolute or protocol-relative
+    /// URL to another host, an http downgrade, a different port) is rejected with
+    /// `nil` so a compromised/spoofed `approve_url` can never open in the
+    /// shared-cookie in-app browser nor be shown in the copyable fallback. Only
+    /// `https` is trusted, except that a dev base served over `http` may keep its
+    /// own `http` scheme.
     static func resolveApproveURL(_ approvePath: String, baseURL: URL) -> URL? {
-        URL(string: approvePath, relativeTo: baseURL)?.absoluteURL
+        guard let resolved = URL(string: approvePath, relativeTo: baseURL)?.absoluteURL,
+              let scheme = resolved.scheme?.lowercased(),
+              let host = resolved.host
+        else { return nil }
+
+        let baseScheme = baseURL.scheme?.lowercased()
+        guard scheme == "https" || (baseScheme == "http" && scheme == baseScheme) else {
+            return nil
+        }
+        guard host.caseInsensitiveCompare(baseURL.host ?? "") == .orderedSame,
+              resolved.port == baseURL.port
+        else { return nil }
+
+        return resolved
     }
 
     static func parseSession(_ data: Data) -> HaviConnectedSession? {

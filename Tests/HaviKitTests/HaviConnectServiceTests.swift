@@ -252,12 +252,76 @@ final class HaviConnectServiceTests: XCTestCase {
         )
     }
 
-    /// An already-absolute `approve_url` is returned unchanged (base ignored).
-    func testResolveApproveURLKeepsAbsoluteURL() {
-        let absolute = "https://havi.handgemacht.ai/connect/approve?setup_code=xyz"
+    /// A same-origin absolute `approve_url` passes through unchanged; an absolute
+    /// URL to another host is rejected so a spoofed link can never open in the
+    /// shared-cookie in-app browser.
+    func testResolveApproveURLAllowsSameHostAbsoluteRejectsCrossHost() {
+        let base = URL(string: "https://havi.handgemacht.ai")!
+        let sameHost = "https://havi.handgemacht.ai/connect/approve?setup_code=xyz"
         XCTAssertEqual(
-            HaviConnectService.resolveApproveURL(absolute, baseURL: URL(string: "https://elsewhere.test")!)?.absoluteString,
-            absolute
+            HaviConnectService.resolveApproveURL(sameHost, baseURL: base)?.absoluteString,
+            sameHost
+        )
+        XCTAssertNil(
+            HaviConnectService.resolveApproveURL(
+                "https://evil.example/connect/approve?setup_code=xyz",
+                baseURL: base
+            )
+        )
+    }
+
+    /// A protocol-relative `//host` reference inherits the base scheme but targets
+    /// another host, so it is rejected.
+    func testResolveApproveURLRejectsProtocolRelativeCrossHost() {
+        XCTAssertNil(
+            HaviConnectService.resolveApproveURL(
+                "//evil.example/connect/approve?setup_code=xyz",
+                baseURL: URL(string: "https://havi.handgemacht.ai")!
+            )
+        )
+    }
+
+    /// An http downgrade against an https base is rejected — only https (or a dev
+    /// base's own http scheme) is trusted.
+    func testResolveApproveURLRejectsHttpDowngradeOnHttpsBase() {
+        XCTAssertNil(
+            HaviConnectService.resolveApproveURL(
+                "http://havi.handgemacht.ai/connect/approve?setup_code=xyz",
+                baseURL: URL(string: "https://havi.handgemacht.ai")!
+            )
+        )
+    }
+
+    /// A matching host on a different port is a different origin and is rejected.
+    func testResolveApproveURLRejectsMatchingHostDifferentPort() {
+        XCTAssertNil(
+            HaviConnectService.resolveApproveURL(
+                "https://havi.handgemacht.ai:8443/connect/approve?setup_code=xyz",
+                baseURL: URL(string: "https://havi.handgemacht.ai")!
+            )
+        )
+    }
+
+    /// A dev base served over http keeps its own scheme and port for same-origin
+    /// relative and absolute paths; a different port on that base is still rejected.
+    func testResolveApproveURLAllowsHttpLoopbackDevBase() {
+        let base = URL(string: "http://127.0.0.1:25004")!
+        XCTAssertEqual(
+            HaviConnectService.resolveApproveURL("/connect/approve?setup_code=abc", baseURL: base)?.absoluteString,
+            "http://127.0.0.1:25004/connect/approve?setup_code=abc"
+        )
+        XCTAssertEqual(
+            HaviConnectService.resolveApproveURL(
+                "http://127.0.0.1:25004/connect/approve?setup_code=abc",
+                baseURL: base
+            )?.absoluteString,
+            "http://127.0.0.1:25004/connect/approve?setup_code=abc"
+        )
+        XCTAssertNil(
+            HaviConnectService.resolveApproveURL(
+                "http://127.0.0.1:25099/connect/approve?setup_code=abc",
+                baseURL: base
+            )
         )
     }
 

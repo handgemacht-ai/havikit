@@ -43,9 +43,11 @@ final class HaviApprovalBrowser: NSObject, ASWebAuthenticationPresentationContex
             url: url,
             callbackURLScheme: Self.unusedCallbackScheme
         ) { [weak self] _, _ in
-            // ASWebAuthenticationSession invokes its completion on the main thread;
-            // assert that isolation so the @MainActor state touches are legal.
-            MainActor.assumeIsolated {
+            // Hop to the main actor for the @MainActor state touches. The work is
+            // trivial and order-insensitive, so a safe hop is preferable to
+            // `assumeIsolated`, which would hard-crash on an undocumented
+            // threading guarantee.
+            Task { @MainActor in
                 self?.session = nil
                 self?.onFinish?()
             }
@@ -64,10 +66,18 @@ final class HaviApprovalBrowser: NSObject, ASWebAuthenticationPresentationContex
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
+        if let anchor = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .filter({ $0.activationState == .foregroundActive })
             .flatMap(\.windows)
-            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+            .first(where: { $0.isKeyWindow }) {
+            return anchor
+        }
+        // No foreground window can host the browser. Rather than present on a
+        // detached anchor — which would silently do nothing with no way to
+        // recover — settle the browser state so the model resets and can retry.
+        Task { @MainActor [weak self] in self?.stop() }
+        return ASPresentationAnchor()
     }
 }
 #endif
