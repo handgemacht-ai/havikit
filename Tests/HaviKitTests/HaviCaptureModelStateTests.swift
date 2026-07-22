@@ -67,6 +67,68 @@ final class HaviCaptureModelStateTests: XCTestCase {
         XCTAssertFalse(model.crop.isCropped)
     }
 
+    // MARK: - Crop confirmation flow (bead havi-od6t)
+
+    func testConfirmingACropZoomsAndReturnsToThePreviousTool() {
+        let model = makeModel()
+        model.markup.selectTool(.arrow)
+        model.beginCropEditing(previousTool: .arrow)
+        XCTAssertTrue(model.crop.isEditing)
+
+        model.crop.updateResize(handle: .bottomRight, to: CGPoint(x: 0.6, y: 0.6))
+        model.confirmCrop()
+
+        XCTAssertFalse(model.crop.isEditing)
+        XCTAssertTrue(model.crop.isCropped)
+        XCTAssertEqual(model.markup.tool, .arrow, "confirming returns to the tool that was active before cropping")
+    }
+
+    func testCancellingACropRevertsToTheLastConfirmedCropAndPreviousTool() {
+        let model = makeModel()
+        model.markup.selectTool(.pen)
+        model.beginCropEditing(previousTool: .pen)
+        model.crop.updateResize(handle: .bottomRight, to: CGPoint(x: 0.7, y: 0.7))
+        model.confirmCrop()
+        let confirmed = model.crop.rect
+
+        model.markup.selectTool(.crop)
+        model.beginCropEditing(previousTool: .pen)
+        model.crop.updateResize(handle: .topLeft, to: CGPoint(x: 0.2, y: 0.2))
+        XCTAssertNotEqual(model.crop.rect, confirmed, "the draft moved while editing")
+
+        model.cancelCrop()
+        XCTAssertEqual(model.crop.rect, confirmed, "cancel restores the last confirmed crop")
+        XCTAssertFalse(model.crop.isEditing)
+        XCTAssertEqual(model.markup.tool, .pen)
+    }
+
+    func testReCroppingCanWidenNotOnlyNarrowThePreviousCrop() {
+        let model = makeModel()
+        model.beginCropEditing(previousTool: .pen)
+        model.crop.updateResize(handle: .topLeft, to: CGPoint(x: 0.4, y: 0.4))
+        model.confirmCrop()
+        let narrow = model.crop.rect
+
+        model.markup.selectTool(.crop)
+        model.beginCropEditing(previousTool: .pen)
+        model.crop.updateResize(handle: .topLeft, to: CGPoint(x: 0.1, y: 0.1))
+        model.confirmCrop()
+
+        XCTAssertLessThan(model.crop.rect.minX, narrow.minX, "re-crop can widen the region")
+        XCTAssertLessThan(model.crop.rect.minY, narrow.minY)
+    }
+
+    func testResetWidensTheDraftToFullFrameWithoutLeavingCropMode() {
+        let model = makeModel()
+        model.beginCropEditing(previousTool: .pen)
+        model.crop.updateResize(handle: .bottomRight, to: CGPoint(x: 0.5, y: 0.5))
+        XCTAssertTrue(model.crop.isCropped)
+
+        model.crop.reset()
+        XCTAssertEqual(model.crop.rect, HaviCropGeometry.fullFrame)
+        XCTAssertTrue(model.crop.isEditing, "Reset keeps crop mode open so the user can re-drag or confirm the full frame")
+    }
+
     func testGoingBackToScreenOneAfterASubmitFailureKeepsMarksAndCropEditable() async {
         let model = makeModel()
         model.markup.selectTool(.rectangle)

@@ -143,4 +143,76 @@ final class HaviCropGeometryTests: XCTestCase {
         let projected = HaviCropGeometry.projectMarks([blur], into: crop)
         XCTAssertTrue(HaviMarkupSerializer.blurRects(of: projected).isEmpty)
     }
+
+    // MARK: - Display transform (canvas point ↔ full-image normalized, bead havi-od6t)
+
+    private func assertPoint(_ actual: CGPoint, _ expected: CGPoint, _ message: String = "", file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(actual.x, expected.x, accuracy: accuracy, "x \(message)", file: file, line: line)
+        XCTAssertEqual(actual.y, expected.y, accuracy: accuracy, "y \(message)", file: file, line: line)
+    }
+
+    private let contentSize = CGSize(width: 200, height: 400)
+
+    func testDisplayTransformIsPlainPointOverSizeWhenUncropped() {
+        let region = HaviCropGeometry.fullFrame
+        assertPoint(
+            HaviCropGeometry.normalizedFromCanvas(CGPoint(x: 100, y: 200), contentSize: contentSize, visibleRegion: region),
+            CGPoint(x: 0.5, y: 0.5),
+            "an uncropped canvas maps point ÷ size, unchanged from before the zoom existed"
+        )
+        assertPoint(
+            HaviCropGeometry.canvasFromNormalized(CGPoint(x: 0.25, y: 0.75), contentSize: contentSize, visibleRegion: region),
+            CGPoint(x: 50, y: 300)
+        )
+    }
+
+    func testUnprojectIsTheInverseOfProject() {
+        let crop = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        let relative = CGPoint(x: 0.3, y: 0.7)
+        assertPoint(HaviCropGeometry.project(HaviCropGeometry.unproject(relative, from: crop), into: crop), relative)
+        let full = CGPoint(x: 0.4, y: 0.6)
+        assertPoint(HaviCropGeometry.unproject(HaviCropGeometry.project(full, into: crop), from: crop), full)
+    }
+
+    func testDisplayTransformRoundTripsUnderCrop() {
+        let region = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        let full = CGPoint(x: 0.4, y: 0.6)
+        let canvas = HaviCropGeometry.canvasFromNormalized(full, contentSize: contentSize, visibleRegion: region)
+        assertPoint(canvas, CGPoint(x: 60, y: 280), "the full-still point lands inside the zoomed content")
+        assertPoint(
+            HaviCropGeometry.normalizedFromCanvas(canvas, contentSize: contentSize, visibleRegion: region),
+            full,
+            "canvas → normalized → canvas is lossless inside the visible region"
+        )
+    }
+
+    func testGestureAtCropEdgesMapsToTheVisibleRegionCorners() {
+        let region = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        assertPoint(
+            HaviCropGeometry.normalizedFromCanvas(.zero, contentSize: contentSize, visibleRegion: region),
+            CGPoint(x: 0.25, y: 0.25),
+            "the top-left canvas corner is the crop's top-left, not the still's"
+        )
+        assertPoint(
+            HaviCropGeometry.normalizedFromCanvas(CGPoint(x: 200, y: 400), contentSize: contentSize, visibleRegion: region),
+            CGPoint(x: 0.75, y: 0.75),
+            "the bottom-right canvas corner is the crop's bottom-right"
+        )
+    }
+
+    func testGestureBeyondTheCanvasClampsToTheVisibleRegion() {
+        let region = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        assertPoint(
+            HaviCropGeometry.normalizedFromCanvas(CGPoint(x: 320, y: -40), contentSize: contentSize, visibleRegion: region),
+            CGPoint(x: 0.75, y: 0.25),
+            "a drag past the zoomed edge cannot place a mark outside the crop"
+        )
+    }
+
+    func testFullStillPointOutsideTheCropLandsOutsideTheContentBounds() {
+        let region = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        let outside = HaviCropGeometry.canvasFromNormalized(CGPoint(x: 0.9, y: 0.9), contentSize: contentSize, visibleRegion: region)
+        XCTAssertGreaterThan(outside.x, contentSize.width, "a mark outside the crop is off-canvas and gets clipped by the content bounds")
+        XCTAssertGreaterThan(outside.y, contentSize.height)
+    }
 }
