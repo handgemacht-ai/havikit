@@ -58,6 +58,8 @@ final class HaviMarkupModel {
             inProgress = HaviMark(shape: .blur(CGRect(origin: point, size: .zero)), color: color)
         case .select:
             beginSelectOrMove(at: point)
+        case .crop:
+            break
         }
     }
 

@@ -13,6 +13,7 @@ public enum HaviMarkTool: String, CaseIterable, Sendable {
     case rectangle
     case blur
     case select
+    case crop
 
     /// Leaf accessibility identifier for the tool's toolbar button.
     public var accessibilityIdentifier: String { "havi-tool-\(rawValue)" }
@@ -26,6 +27,7 @@ public enum HaviMarkTool: String, CaseIterable, Sendable {
         case .rectangle: return "rectangle"
         case .blur: return "eye.slash"
         case .select: return "hand.point.up.left"
+        case .crop: return "crop"
         }
     }
 
@@ -37,11 +39,13 @@ public enum HaviMarkTool: String, CaseIterable, Sendable {
         case .rectangle: return "Rectangle"
         case .blur: return "Redact"
         case .select: return "Select"
+        case .crop: return "Crop"
         }
     }
 
-    /// Whether the tool draws a new mark (vs. `select`, which edits existing).
-    public var isDrawing: Bool { self != .select }
+    /// Whether the tool draws a new mark (vs. `select`/`crop`, which edit the
+    /// existing marks array or the crop rect instead).
+    public var isDrawing: Bool { self != .select && self != .crop }
 }
 
 /// A markup color preset. Stores the RGB components (for the SwiftUI swatch) and

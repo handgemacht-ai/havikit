@@ -25,6 +25,9 @@ final class HaviCaptureModel {
     /// serializes its marks into the envelope and burns its blur regions into the
     /// pixels before encoding.
     let markup = HaviMarkupModel()
+    /// The crop tool's rect (bead havi-oukr), normalized to the full frozen
+    /// still — the same space marks live in. Shared by both capture screens.
+    let crop = HaviCropModel()
     private(set) var phase: Phase = .editing
 
     /// Diagnostics frozen at capture time so the badge, the detail sheet, and the
@@ -58,12 +61,24 @@ final class HaviCaptureModel {
         phase = .submitting
 
         let config = runtime.config
-        // Redaction is destructive and pre-byte: burn the blur marks into the
-        // full-res still first, so the encode and every re-encode fallback ship
-        // the redacted pixels — the un-redacted image never leaves the device.
+        let cropRect = crop.rect
+
+        // Crop is a real byte crop and runs FIRST: pixels outside the crop
+        // never leave the device — the same privacy posture as redaction.
+        // Redaction burns into the already-cropped canvas, so every downstream
+        // step (encode and every re-encode fallback) only ever sees it.
+        let cropped = HaviImageCropper.crop(session.image, to: cropRect)
+
+        // Marks stay normalized to the full frozen still while editing; only
+        // now, once the crop is final, are they re-expressed in the cropped
+        // image's own 0…1 space — anything that landed fully outside is
+        // dropped, anything partially outside is clipped by the existing
+        // pixel-rect clamping once it reaches pixel space.
+        let projectedMarks = HaviCropGeometry.projectMarks(markup.marks, into: cropRect)
+
         let outgoing = HaviImageRedactor.burn(
-            blurRects: HaviMarkupSerializer.blurRects(of: markup.marks),
-            into: session.image
+            blurRects: HaviMarkupSerializer.blurRects(of: projectedMarks),
+            into: cropped
         )
         guard let encoded = HaviImageRenderer.encodeWithSize(
             outgoing,
@@ -78,7 +93,7 @@ final class HaviCaptureModel {
             return
         }
 
-        let input = buildInput(imageSize: encoded.size, config: config)
+        let input = buildInput(marks: projectedMarks, cropRect: cropRect, imageSize: encoded.size, config: config)
 
         let token = runtime.tokenStore.accessToken ?? config.devToken
         let workspace = runtime.tokenStore.workspaceID ?? config.workspaceID
@@ -121,13 +136,18 @@ final class HaviCaptureModel {
 
     // MARK: - Envelope input
 
-    private func buildInput(imageSize: HaviSize, config: HaviConfig) -> HaviEnvelopeInput {
-        let marks = markup.marks
+    private func buildInput(marks: [HaviMark], cropRect: CGRect, imageSize: HaviSize, config: HaviConfig) -> HaviEnvelopeInput {
         let markupSvg = HaviMarkupSerializer.svg(for: marks, imageSize: imageSize)
         let fragment = HaviMarkupSerializer.boundingBox(of: marks, imageSize: imageSize)
             ?? HaviCaptureGeometry.fullFrameRect(imageSize: imageSize)
 
-        let hint = HaviMarkupSerializer.normalizedBoundingBox(of: marks).flatMap { bounds -> String? in
+        // The CssSelector hint's center still needs FULL-image / window-point
+        // space (a11yFrames were captured there, unaffected by crop) — so it is
+        // derived from the surviving marks' ORIGINAL (pre-projection) geometry,
+        // not the crop-relative `marks` used for the fragment/svg above.
+        let survivingIDs = Set(marks.map(\.id))
+        let hintSourceMarks = markup.marks.filter { survivingIDs.contains($0.id) }
+        let hint = HaviMarkupSerializer.normalizedBoundingBox(of: hintSourceMarks).flatMap { bounds -> String? in
             let center = CGPoint(
                 x: bounds.midX * CGFloat(session.viewport.width),
                 y: bounds.midY * CGFloat(session.viewport.height)
@@ -146,7 +166,7 @@ final class HaviCaptureModel {
         return HaviEnvelopeInput(
             bundleID: Bundle.main.bundleIdentifier ?? "unknown",
             screen: session.screen,
-            viewport: session.viewport,
+            viewport: HaviCropGeometry.projectedViewport(session.viewport, crop: cropRect),
             fragment: fragment,
             markupSvg: markupSvg,
             cssPath: HaviCaptureGeometry.cssPath(screen: session.screen, hint: hint),

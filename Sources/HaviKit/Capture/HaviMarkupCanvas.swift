@@ -9,11 +9,21 @@ import UIKit
 /// UI) so mark coordinates stay aligned with the screenshot. All geometry is kept
 /// normalized (0…1) in `HaviMarkupModel`; this view only converts display points
 /// to and from that space.
+///
+/// The crop tool (bead havi-oukr) layers on top: a persistent dimmed-outside /
+/// bright-inside preview of `HaviCropModel`'s rect, plus eight discrete
+/// draggable handle views (Apple screenshot-editor pattern) shown while `.crop`
+/// is the active tool. The crop rect lives in the same full-image normalized
+/// space as the marks; nothing here projects it — that happens once, at
+/// envelope-build time, via `HaviCropGeometry`.
 struct HaviMarkupCanvas: View {
     let image: UIImage
     @Bindable var model: HaviMarkupModel
+    @Bindable var crop: HaviCropModel
 
     @State private var strokeActive = false
+
+    private static let cropCoordinateSpace = "haviCropSurface"
 
     var body: some View {
         GeometryReader { proxy in
@@ -36,9 +46,78 @@ struct HaviMarkupCanvas: View {
                 .contentShape(Rectangle())
                 .highPriorityGesture(drawGesture(canvasSize: fitted.size))
                 .accessibilityIdentifier("havi-markup-canvas")
+
+                if crop.isCropped {
+                    cropDimOverlay(size: fitted.size)
+                        .frame(width: fitted.width, height: fitted.height)
+                        .offset(x: fitted.minX, y: fitted.minY)
+                        .allowsHitTesting(false)
+                }
+
+                if model.tool == .crop {
+                    cropInteractionOverlay(size: fitted.size)
+                        .offset(x: fitted.minX, y: fitted.minY)
+                }
             }
         }
         .aspectRatio(imageAspect, contentMode: .fit)
+    }
+
+    // MARK: - Crop overlay (design: dimmed outside, bright inside, draggable handles)
+
+    /// The persistent "this is what will actually be uploaded" preview: a
+    /// dark scrim over everything outside the crop rect, shown regardless of
+    /// which tool is active so a crop never surprises the user at submit time.
+    private func cropDimOverlay(size: CGSize) -> some View {
+        let cropRect = displayRect(crop.rect, size: size)
+        return Path { path in
+            path.addRect(CGRect(origin: .zero, size: size))
+            path.addRect(cropRect)
+        }
+        .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
+    }
+
+    /// The crop tool's live border + eight draggable handles, mounted only
+    /// while `.crop` is the active tool.
+    private func cropInteractionOverlay(size: CGSize) -> some View {
+        ZStack(alignment: .topLeading) {
+            cropBorder(size: size)
+                .allowsHitTesting(false)
+            ForEach(HaviCropGeometry.Handle.allCases, id: \.self) { handle in
+                cropHandle(handle, size: size)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .coordinateSpace(name: Self.cropCoordinateSpace)
+    }
+
+    private func cropBorder(size: CGSize) -> some View {
+        Path(displayRect(crop.rect, size: size))
+            .stroke(Color.white, style: StrokeStyle(lineWidth: 2))
+    }
+
+    private func cropHandle(_ handle: HaviCropGeometry.Handle, size: CGSize) -> some View {
+        let point = display(HaviCropGeometry.anchor(of: handle, in: crop.rect), size: size)
+        return Circle()
+            .fill(Color.white)
+            .frame(width: 14, height: 14)
+            .overlay(Circle().strokeBorder(Self.accent, lineWidth: 2))
+            .shadow(color: Color.black.opacity(0.3), radius: 2, y: 1)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+            .position(point)
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.cropCoordinateSpace))
+                    .onChanged { value in
+                        let normalized = CGPoint(
+                            x: value.location.x / size.width,
+                            y: value.location.y / size.height
+                        )
+                        crop.updateResize(handle: handle, to: normalized)
+                    }
+            )
+            .accessibilityLabel(handle.accessibilityLabel)
+            .accessibilityIdentifier(handle.accessibilityIdentifier)
     }
 
     // MARK: - Gesture
