@@ -222,6 +222,56 @@ final class HaviConnectServiceTests: XCTestCase {
         let parsed = HaviConnectService.parseSetupLink(Data(json.utf8), baseURL: URL(string: "https://x.test")!, now: Date(timeIntervalSince1970: 0))
         XCTAssertEqual(parsed?.expiresAt, Date(timeIntervalSince1970: HaviConnectService.linkTTL))
     }
+
+    // MARK: - Approve-URL resolution (in-app sign-in browser, bead havi-jnjj)
+
+    /// The absolute leading-slash `approve_url` replaces the base's own path, so a
+    /// configured base URL resolves the same with or without a trailing slash.
+    func testResolveApproveURLIsTrailingSlashInvariant() {
+        let path = "/connect/approve?setup_code=abc123"
+        let expected = "https://havi.handgemacht.ai/connect/approve?setup_code=abc123"
+        XCTAssertEqual(
+            HaviConnectService.resolveApproveURL(path, baseURL: URL(string: "https://havi.handgemacht.ai")!)?.absoluteString,
+            expected
+        )
+        XCTAssertEqual(
+            HaviConnectService.resolveApproveURL(path, baseURL: URL(string: "https://havi.handgemacht.ai/")!)?.absoluteString,
+            expected
+        )
+    }
+
+    /// A base carrying its own path segment is still replaced by the absolute
+    /// approve path (no accidental concatenation onto the base path).
+    func testResolveApproveURLReplacesBasePath() {
+        XCTAssertEqual(
+            HaviConnectService.resolveApproveURL(
+                "/connect/approve?setup_code=z9",
+                baseURL: URL(string: "https://havi.handgemacht.ai/app/")!
+            )?.absoluteString,
+            "https://havi.handgemacht.ai/connect/approve?setup_code=z9"
+        )
+    }
+
+    /// An already-absolute `approve_url` is returned unchanged (base ignored).
+    func testResolveApproveURLKeepsAbsoluteURL() {
+        let absolute = "https://havi.handgemacht.ai/connect/approve?setup_code=xyz"
+        XCTAssertEqual(
+            HaviConnectService.resolveApproveURL(absolute, baseURL: URL(string: "https://elsewhere.test")!)?.absoluteString,
+            absolute
+        )
+    }
+
+    /// The new backend contract path parses end to end against a trailing-slash base.
+    func testParseSetupLinkResolvesNewConnectApprovePath() {
+        let base = URL(string: "https://havi.handgemacht.ai/")!
+        let json = """
+        {"data":{"device_code":"dev-9","status":"pending","client_type":"mobile",\
+        "approve_url":"/connect/approve?setup_code=dev-9","expires_at":"2026-10-19T10:30:00Z"}}
+        """
+        let parsed = HaviConnectService.parseSetupLink(Data(json.utf8), baseURL: base, now: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(parsed?.deviceCode, "dev-9")
+        XCTAssertEqual(parsed?.approveURL.absoluteString, "https://havi.handgemacht.ai/connect/approve?setup_code=dev-9")
+    }
 }
 
 /// A mutable clock the injected `now` reads and the injected `sleep` advances, so

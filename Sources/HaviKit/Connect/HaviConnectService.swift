@@ -4,9 +4,9 @@ import FoundationNetworking
 #endif
 
 /// A pending device-code pairing (design §5): the poll `deviceCode`, the full
-/// approve URL to open on the laptop (the relative `approve_url` resolved against
-/// the base URL), and the client-side TTL deadline after which the link is
-/// treated as expired.
+/// approve URL (the relative `approve_url` from the create response resolved
+/// against the configured base URL) opened in the in-app sign-in browser, and the
+/// client-side TTL deadline after which the link is treated as expired.
 public struct HaviSetupLink: Sendable, Equatable {
     public let deviceCode: String
     public let approveURL: URL
@@ -46,8 +46,9 @@ enum HaviExchangeStep: Equatable {
 /// Device-code login client (design §5). Sits alongside `HaviUploader` on the
 /// transport side and reuses the live setup-link primitives: `createSetupLink`
 /// requests a `client_type: mobile` pairing, `runExchange` polls the exchange
-/// endpoint until the developer approves on their laptop, the link's TTL expires,
-/// or the flow is cancelled. On approval the resolved session is persisted to
+/// endpoint until the developer approves (in the in-app sign-in browser or on
+/// another signed-in device), the link's TTL expires, or the flow is cancelled.
+/// On approval the resolved session is persisted to
 /// `HaviTokenStore` before returning. All network is `async` on the actor and
 /// the poll cadence / clock are injectable so the state machine is unit-tested
 /// without touching the network.
@@ -197,10 +198,20 @@ public actor HaviConnectService {
               let payload = decoded.data,
               let deviceCode = payload.deviceCode, !deviceCode.isEmpty,
               let approvePath = payload.approveUrl,
-              let approveURL = URL(string: approvePath, relativeTo: baseURL)?.absoluteURL
+              let approveURL = resolveApproveURL(approvePath, baseURL: baseURL)
         else { return nil }
         let expiresAt = payload.expiresAt.flatMap(parseDate) ?? now.addingTimeInterval(linkTTL)
         return HaviSetupLink(deviceCode: deviceCode, approveURL: approveURL, expiresAt: expiresAt)
+    }
+
+    /// Resolves the server's relative `approve_url` (e.g.
+    /// `/connect/approve?setup_code=<code>`) against the configured base URL — the
+    /// single place the absolute sign-in URL is built, so the path is never
+    /// hardcoded. The absolute leading-slash path replaces the base's own path, so
+    /// a base with or without a trailing slash resolves identically; an
+    /// already-absolute `approve_url` is returned unchanged.
+    static func resolveApproveURL(_ approvePath: String, baseURL: URL) -> URL? {
+        URL(string: approvePath, relativeTo: baseURL)?.absoluteURL
     }
 
     static func parseSession(_ data: Data) -> HaviConnectedSession? {

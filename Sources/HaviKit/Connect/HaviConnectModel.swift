@@ -3,11 +3,13 @@ import Foundation
 import Observation
 
 /// Drives the connect sheet (design §5): create a `client_type: mobile` pairing,
-/// poll the exchange endpoint while the developer approves on their laptop, and
-/// resolve to a connected identity, an expired link, or a plain-language error.
-/// Manual paste stays available as the secondary path, and a connected identity
+/// open the approval page in the in-app sign-in browser, poll the exchange
+/// endpoint while the developer approves, and resolve to a connected identity, an
+/// expired link, or a plain-language error. Approving on another signed-in device
+/// and manual paste stay available as secondary paths, and a connected identity
 /// can be revoked locally. The network + poll state machine live in
-/// `HaviConnectService`; this is the `@MainActor`-observable glue the SwiftUI
+/// `HaviConnectService`; the browser open / auto-dismiss rules live in the pure
+/// `HaviConnectBrowserState`; this is the `@MainActor`-observable glue the SwiftUI
 /// sheet binds to.
 @MainActor
 @Observable
@@ -21,6 +23,7 @@ final class HaviConnectModel {
     }
 
     private(set) var phase: Phase
+    private(set) var browser = HaviConnectBrowserState()
     var pasteToken: String = ""
     var pasteWorkspaceID: String = ""
 
@@ -42,6 +45,14 @@ final class HaviConnectModel {
         return nil
     }
 
+    /// The absolute approve URL the in-app sign-in browser opens, resolved by the
+    /// service from the create response's relative `approve_url`. Present only
+    /// while a link is pending approval.
+    var approveURL: URL? {
+        if case .awaiting(let link) = phase { return link.approveURL }
+        return nil
+    }
+
     func onAppear() {
         if case .connected = phase { return }
         start()
@@ -53,7 +64,21 @@ final class HaviConnectModel {
         pollTask?.cancel()
         cancelFlag.reset()
         phase = .creating
+        browser = HaviConnectBrowserState()
         pollTask = Task { await runFlow() }
+    }
+
+    /// "Sign in with HAVI": open the approval page in the in-app browser. A no-op
+    /// unless a link is pending approval.
+    func openApproval() {
+        browser.openRequested()
+    }
+
+    /// The in-app sign-in browser closed — user tapped Done, or the poll loop
+    /// succeeded and we tore it down. Polling is untouched, so a background
+    /// approval still lands.
+    func browserClosed() {
+        browser.browserClosed()
     }
 
     /// Cancel button on the waiting state — stops polling. The sheet dismisses.
@@ -67,6 +92,7 @@ final class HaviConnectModel {
         let workspace = pasteWorkspaceID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty, !workspace.isEmpty else { return }
         cancel()
+        browser.flowSettled()
         runtime.tokenStore.signIn(token: token, workspaceID: workspace)
         phase = .connected(runtime.tokenStore.connectedSession
             ?? HaviConnectedSession(accessToken: token, workspaceID: workspace))
@@ -84,13 +110,18 @@ final class HaviConnectModel {
     private func runFlow() async {
         switch await runtime.connectService.createSetupLink() {
         case .failure(let failure):
+            browser.flowSettled()
             phase = .error(failure.userMessage)
         case .success(let link):
             phase = .awaiting(link)
+            browser.beganAwaiting()
             let result = await runtime.connectService.runExchange(
                 link: link,
                 isCancelled: { [cancelFlag] in cancelFlag.isCancelled }
             )
+            // A terminal outcome forces the sign-in browser down, so approving
+            // (or expiry/error) while it is up auto-dismisses it.
+            browser.flowSettled()
             switch result {
             case .connected(let session): phase = .connected(session)
             case .expired: phase = .expired
