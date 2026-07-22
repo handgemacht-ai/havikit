@@ -15,11 +15,11 @@ final class HaviRuntime {
     let presenter = HaviCapturePresenter()
     #endif
 
-    init(config: HaviConfig, tokenStore: HaviTokenStore) {
+    init(config: HaviConfig, tokenStore: HaviTokenStore, connectService: HaviConnectService? = nil) {
         self.config = config
         self.tokenStore = tokenStore
         self.uploader = HaviUploader(config: config)
-        self.connectService = HaviConnectService(config: config, tokenStore: tokenStore)
+        self.connectService = connectService ?? HaviConnectService(config: config, tokenStore: tokenStore)
     }
 
     /// Whether a usable credential resolves — a Keychain credential (manual paste

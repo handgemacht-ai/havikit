@@ -22,6 +22,7 @@ struct HaviConnectSheet: View {
     @State private var pasteExpanded = false
     @State private var otherDeviceExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     init(runtime: HaviRuntime, reconnect: Bool = false, onClose: @escaping () -> Void) {
         self.runtime = runtime
@@ -68,26 +69,58 @@ struct HaviConnectSheet: View {
                 approvalBrowser.stop()
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            // Returning to the foreground (from the in-app sign-in browser or a
+            // background magic-link round trip) settles to the connected state if
+            // the approval landed while we were away, and otherwise keeps the poll
+            // alive on the same code.
+            if phase == .active { model.applicationBecameActive() }
+        }
         .onDisappear {
+            // The in-app sign-in browser covers the sheet, which SwiftUI reports as
+            // a disappear. That must NOT tear down the poll — closing the browser
+            // never ends the pairing (design §5). Only a real dismiss (browser not
+            // up) cancels.
+            guard !model.browser.isPresented else { return }
             model.cancel()
             approvalBrowser.stop()
         }
     }
 
+    /// The connected success state: an unmistakably positive composition — a
+    /// system-green checkmark on a frosted success-tinted tray — while the sheet
+    /// stays on HAVI branding (title, and the accent-tinted Disconnect action).
     private func connectedCard(_ session: HaviConnectedSession) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Label {
                 Text("Connected to HAVI").font(.headline)
             } icon: {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(HaviMarkupCanvas.accent)
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(HaviMarkupCanvas.success)
             }
+            .accessibilityIdentifier("havi-connected")
             Text(identityLine(session))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Button("Disconnect") { model.disconnect() }
                 .buttonStyle(.bordered)
+                .tint(HaviMarkupCanvas.accent)
                 .accessibilityIdentifier("havi-disconnect")
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(HaviMarkupCanvas.success.opacity(0.10))
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.regularMaterial)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(HaviMarkupCanvas.success.opacity(0.22), lineWidth: 1)
+        )
     }
 
     private var creatingCard: some View {
@@ -146,7 +179,7 @@ struct HaviConnectSheet: View {
                 .fill(HaviMarkupCanvas.accent.opacity(0.06))
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(.ultraThinMaterial)
+                        .fill(.regularMaterial)
                 )
         )
         .overlay(
