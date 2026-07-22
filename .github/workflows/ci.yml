@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-test:
+    name: swift test (macOS host)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain versions
+        run: |
+          swift --version
+          xcodebuild -version
+      - name: swift test
+        run: swift test
+
+  ios-test:
+    name: xcodebuild test (iOS Simulator)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve an available iOS Simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          pick = ""
+          for runtime, devices in data.items():
+              if "iOS" not in runtime:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and "iPhone" in device["name"]:
+                      pick = device["udid"]
+                      break
+              if pick:
+                  break
+          print(pick)')
+          if [ -z "$UDID" ]; then
+            echo "No available iOS Simulator found" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          echo "Using simulator $UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+      - name: Resolve package scheme
+        id: scheme
+        run: |
+          set -euo pipefail
+          SCHEME=$(xcodebuild -list -json 2>/dev/null | python3 -c '
+          import json, sys
+          info = json.load(sys.stdin)
+          schemes = (info.get("workspace") or info.get("project") or {}).get("schemes", [])
+          print("HaviKit" if "HaviKit" in schemes else (schemes[0] if schemes else ""))')
+          if [ -z "$SCHEME" ]; then echo "No scheme found" >&2; xcodebuild -list >&2; exit 1; fi
+          echo "Using scheme $SCHEME"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+      - name: xcodebuild test
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -scheme "${{ steps.scheme.outputs.scheme }}" \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath TestResults.xcresult
+      - name: Upload xcresult on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresult
+          path: TestResults.xcresult
+          retention-days: 7
+          if-no-files-found: ignore

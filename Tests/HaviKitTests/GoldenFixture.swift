@@ -2,10 +2,10 @@ import Foundation
 import XCTest
 
 /// Loads the committed cross-language golden table
-/// (`design/havi-envelope-golden.json`, the single source of truth also vendored
-/// into havi's ExUnit contract test). Located by walking up from this test
-/// source file so the fixture stays at the design-mandated repo path with no
-/// duplicate copy inside the package.
+/// (`Tests/HaviKitTests/Fixtures/havi-envelope-golden.json`). This repo is the
+/// canonical home of the envelope golden fixture; the havi backend keeps a
+/// vendored copy guarded by its `mobile_golden_contract_test.exs`. The fixture
+/// is bundled as an SPM test resource and loaded from `Bundle.module`.
 enum GoldenFixture {
     struct Case {
         let id: String
@@ -47,16 +47,11 @@ enum GoldenFixture {
         return match.siblings
     }
 
-    private static func locate(file: StaticString = #filePath) throws -> URL {
-        var directory = URL(fileURLWithPath: "\(file)").deletingLastPathComponent()
-        for _ in 0..<12 {
-            let candidate = directory.appendingPathComponent("design/havi-envelope-golden.json")
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return candidate
-            }
-            directory = directory.deletingLastPathComponent()
+    private static func locate() throws -> URL {
+        guard let url = Bundle.module.url(forResource: "havi-envelope-golden", withExtension: "json") else {
+            throw error("could not locate havi-envelope-golden.json in Bundle.module resources")
         }
-        throw error("could not locate design/havi-envelope-golden.json above \(file)")
+        return url
     }
 
     private static func error(_ message: String) -> Error {

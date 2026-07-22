@@ -1,0 +1,278 @@
+{
+  "description": "Cross-language golden envelope table for the HAVI mobile SDK (HaviKit iOS + Android). Each case pairs a builder input with the exact W3C annotation envelope the on-device builder emits after the KEY-name secret scrub, plus the multipart siblings the controller reads. The Swift HaviKitEnvelopeTests assert their builder output byte-for-byte against `envelope` (after canonicalization); a vendored copy is POSTed through the real havi AnnotationController.create path (TEST-1) to prove the emitted bytes are what the backend accepts. `envelope` is the post-scrub, ready-to-POST body; `input.contexts` / `input.tags` show the pre-scrub values (secret-shaped keys present) so the scrub is visible. Markup v2 (bead havi-6953): `input.markupSvg` is the pre-serialized SvgSelector value (all non-blur marks in image-pixel space) built by HaviMarkupSerializer; blur/redact marks are burned into the pixels and never appear here. Diagnostics v2: `input.consoleErrors` / `input.networkErrors` become the `console-errors` / `network-errors` describing bodies, mirroring the browser extension's annotation-envelope.js shape.",
+  "cases": [
+    {
+      "id": "minimal",
+      "description": "Store-safe floor: no comment, no priority, no markup (full-frame FragmentSelector, no SvgSelector), no device-info/console/network/app-logs, no contexts/tags. Only the load-bearing dev scoping survives.",
+      "input": {
+        "bundleID": "ai.handgemacht.lesewerkstatt.dev",
+        "screen": "HomeScreen",
+        "viewport": { "width": 393, "height": 852 },
+        "fragment": { "x": 0, "y": 0, "width": 786, "height": 1704 },
+        "markupSvg": null,
+        "cssPath": "HomeScreen",
+        "comment": null,
+        "priority": null,
+        "deviceInfo": null,
+        "consoleErrors": null,
+        "networkErrors": null,
+        "appLogs": null,
+        "dev": { "project": "lesewerkstatt", "worktree": "home-fix", "branch": "home-fix", "commit": null },
+        "contexts": {},
+        "tags": {}
+      },
+      "siblings": { "project": "lesewerkstatt", "worktree": "home-fix", "branch": "home-fix" },
+      "envelope": {
+        "@context": "http://www.w3.org/ns/anno.jsonld",
+        "type": "Annotation",
+        "motivation": "commenting",
+        "body": [
+          { "type": "Image" }
+        ],
+        "target": {
+          "source": "app://ai.handgemacht.lesewerkstatt.dev/HomeScreen",
+          "selector": [
+            { "type": "FragmentSelector", "conformsTo": "http://www.w3.org/TR/media-frags/", "value": "xywh=0,0,786,1704" },
+            { "type": "CssSelector", "value": "HomeScreen" }
+          ],
+          "state": { "type": "HttpRequestState", "value": "viewport=393x852" }
+        },
+        "x:havi": {
+          "dev": { "project": "lesewerkstatt", "worktree": "home-fix", "branch": "home-fix" }
+        }
+      }
+    },
+    {
+      "id": "full-context",
+      "description": "Every body and bucket populated — mirrors the design §3 example. Comment, priority tagging, device-info + app-logs describing bodies, single-rectangle markup serialized to Fragment + Svg (the v2 serializer reproduces the v1 SVG bytes for one rectangle), full dev block with commit, one context namespace, one tag.",
+      "input": {
+        "bundleID": "ai.handgemacht.lesewerkstatt.dev",
+        "screen": "ReaderScreen",
+        "viewport": { "width": 844, "height": 390 },
+        "fragment": { "x": 612, "y": 980, "width": 470, "height": 190 },
+        "markupSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"612\" y=\"980\" width=\"470\" height=\"190\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\"/></svg>",
+        "cssPath": "ReaderScreen > wordCard.Haus",
+        "comment": "Word card overlaps the mic button in landscape",
+        "priority": "high",
+        "deviceInfo": "iPhone15,3 · iOS 17.5.1 · Lesewerkstatt Dev 1.4.0+812 · de_DE · landscapeLeft",
+        "consoleErrors": null,
+        "networkErrors": null,
+        "appLogs": "[info] card start ref=Haus\n[warning] settle timeout phase=listen\n[error] RPC readAloudScore 503",
+        "dev": { "project": "lesewerkstatt", "worktree": "reader-landscape-fix", "branch": "reader-landscape-fix", "commit": "a1b2c3d" },
+        "contexts": { "reader": { "cardType": "known-word", "phase": "listen" } },
+        "tags": { "buildConfig": "DevRelease" }
+      },
+      "siblings": { "project": "lesewerkstatt", "worktree": "reader-landscape-fix", "branch": "reader-landscape-fix" },
+      "envelope": {
+        "@context": "http://www.w3.org/ns/anno.jsonld",
+        "type": "Annotation",
+        "motivation": "commenting",
+        "body": [
+          { "type": "TextualBody", "value": "Word card overlaps the mic button in landscape", "purpose": "commenting" },
+          { "type": "TextualBody", "value": "high", "purpose": "tagging", "x:labelKey": "priority" },
+          { "type": "TextualBody", "value": "iPhone15,3 · iOS 17.5.1 · Lesewerkstatt Dev 1.4.0+812 · de_DE · landscapeLeft", "purpose": "describing", "format": "text/plain", "x:role": "device-info" },
+          { "type": "TextualBody", "value": "[info] card start ref=Haus\n[warning] settle timeout phase=listen\n[error] RPC readAloudScore 503", "purpose": "describing", "format": "text/plain", "x:role": "app-logs" },
+          { "type": "Image" }
+        ],
+        "target": {
+          "source": "app://ai.handgemacht.lesewerkstatt.dev/ReaderScreen",
+          "selector": [
+            { "type": "FragmentSelector", "conformsTo": "http://www.w3.org/TR/media-frags/", "value": "xywh=612,980,470,190" },
+            { "type": "CssSelector", "value": "ReaderScreen > wordCard.Haus" },
+            { "type": "SvgSelector", "value": "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"612\" y=\"980\" width=\"470\" height=\"190\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\"/></svg>" }
+          ],
+          "state": { "type": "HttpRequestState", "value": "viewport=844x390" }
+        },
+        "x:havi": {
+          "dev": { "project": "lesewerkstatt", "worktree": "reader-landscape-fix", "branch": "reader-landscape-fix", "commit": "a1b2c3d" },
+          "contexts": { "reader": { "cardType": "known-word", "phase": "listen" } },
+          "tags": { "buildConfig": "DevRelease" }
+        }
+      }
+    },
+    {
+      "id": "redacted",
+      "description": "Secret scrub proof. Pre-scrub contexts carry a secret inner key (session.authToken), a secret namespace name (cookies), and a namespace whose keys are all secret (vault → empties → omitted); tags carry a secret key (authorization). The `envelope` is the post-scrub result: authToken dropped, cookies dropped, vault omitted, authorization dropped.",
+      "input": {
+        "bundleID": "ai.handgemacht.lesewerkstatt.dev",
+        "screen": "SettingsScreen",
+        "viewport": { "width": 393, "height": 852 },
+        "fragment": { "x": 0, "y": 0, "width": 786, "height": 1704 },
+        "markupSvg": null,
+        "cssPath": "SettingsScreen",
+        "comment": "Secret-shaped context keys must be scrubbed before send",
+        "priority": "medium",
+        "deviceInfo": null,
+        "consoleErrors": null,
+        "networkErrors": null,
+        "appLogs": null,
+        "dev": { "project": "lesewerkstatt", "worktree": "redaction-audit", "branch": "redaction-audit", "commit": null },
+        "contexts": {
+          "session": { "userId": "u-42", "authToken": "eyJhbGciOi", "note": "landscape" },
+          "cookies": { "sid": "abc123" },
+          "vault": { "password": "hunter2", "secretKey": "k-01" }
+        },
+        "tags": { "authorization": "Bearer zzz", "buildConfig": "Debug" }
+      },
+      "siblings": { "project": "lesewerkstatt", "worktree": "redaction-audit", "branch": "redaction-audit" },
+      "envelope": {
+        "@context": "http://www.w3.org/ns/anno.jsonld",
+        "type": "Annotation",
+        "motivation": "commenting",
+        "body": [
+          { "type": "TextualBody", "value": "Secret-shaped context keys must be scrubbed before send", "purpose": "commenting" },
+          { "type": "TextualBody", "value": "medium", "purpose": "tagging", "x:labelKey": "priority" },
+          { "type": "Image" }
+        ],
+        "target": {
+          "source": "app://ai.handgemacht.lesewerkstatt.dev/SettingsScreen",
+          "selector": [
+            { "type": "FragmentSelector", "conformsTo": "http://www.w3.org/TR/media-frags/", "value": "xywh=0,0,786,1704" },
+            { "type": "CssSelector", "value": "SettingsScreen" }
+          ],
+          "state": { "type": "HttpRequestState", "value": "viewport=393x852" }
+        },
+        "x:havi": {
+          "dev": { "project": "lesewerkstatt", "worktree": "redaction-audit", "branch": "redaction-audit" },
+          "contexts": { "session": { "userId": "u-42", "note": "landscape" } },
+          "tags": { "buildConfig": "Debug" }
+        }
+      }
+    },
+    {
+      "id": "diagnostics",
+      "description": "Markup v2 diagnostics split (bead havi-6953). No markup; the breadcrumb ring was split into console-errors (error level, non-network), network-errors (category=network, host-formatted METHOD/url/status lines), and the remaining breadcrumbs (app-logs). All three describing bodies are present and ordered device-info → console-errors → network-errors → app-logs, mirroring the browser extension. Toggling a group off simply omits its body (see the Swift toggle tests).",
+      "input": {
+        "bundleID": "ai.handgemacht.lesewerkstatt.dev",
+        "screen": "ReaderScreen",
+        "viewport": { "width": 393, "height": 852 },
+        "fragment": { "x": 0, "y": 0, "width": 786, "height": 1704 },
+        "markupSvg": null,
+        "cssPath": "ReaderScreen",
+        "comment": "Scores never came back after the last card",
+        "priority": "high",
+        "deviceInfo": "iPhone15,3 · iOS 17.5.1 · Lesewerkstatt Dev 1.4.0+812 · de_DE · portrait",
+        "consoleErrors": "[error] Read-aloud scorer returned nil\n[error] Missing card asset: Haus",
+        "networkErrors": "POST https://havi.example/api/rpc/run 503 action=readAloudScore\nPOST https://havi.example/api/rpc/run 401 action=loadPlan",
+        "appLogs": "[info] card start ref=Haus\n[warning] settle timeout phase=listen",
+        "dev": { "project": "lesewerkstatt", "worktree": "diagnostics-badges", "branch": "diagnostics-badges", "commit": null },
+        "contexts": {},
+        "tags": {}
+      },
+      "siblings": { "project": "lesewerkstatt", "worktree": "diagnostics-badges", "branch": "diagnostics-badges" },
+      "envelope": {
+        "@context": "http://www.w3.org/ns/anno.jsonld",
+        "type": "Annotation",
+        "motivation": "commenting",
+        "body": [
+          { "type": "TextualBody", "value": "Scores never came back after the last card", "purpose": "commenting" },
+          { "type": "TextualBody", "value": "high", "purpose": "tagging", "x:labelKey": "priority" },
+          { "type": "TextualBody", "value": "iPhone15,3 · iOS 17.5.1 · Lesewerkstatt Dev 1.4.0+812 · de_DE · portrait", "purpose": "describing", "format": "text/plain", "x:role": "device-info" },
+          { "type": "TextualBody", "value": "[error] Read-aloud scorer returned nil\n[error] Missing card asset: Haus", "purpose": "describing", "format": "text/plain", "x:role": "console-errors" },
+          { "type": "TextualBody", "value": "POST https://havi.example/api/rpc/run 503 action=readAloudScore\nPOST https://havi.example/api/rpc/run 401 action=loadPlan", "purpose": "describing", "format": "text/plain", "x:role": "network-errors" },
+          { "type": "TextualBody", "value": "[info] card start ref=Haus\n[warning] settle timeout phase=listen", "purpose": "describing", "format": "text/plain", "x:role": "app-logs" },
+          { "type": "Image" }
+        ],
+        "target": {
+          "source": "app://ai.handgemacht.lesewerkstatt.dev/ReaderScreen",
+          "selector": [
+            { "type": "FragmentSelector", "conformsTo": "http://www.w3.org/TR/media-frags/", "value": "xywh=0,0,786,1704" },
+            { "type": "CssSelector", "value": "ReaderScreen" }
+          ],
+          "state": { "type": "HttpRequestState", "value": "viewport=393x852" }
+        },
+        "x:havi": {
+          "dev": { "project": "lesewerkstatt", "worktree": "diagnostics-badges", "branch": "diagnostics-badges" }
+        }
+      }
+    },
+    {
+      "id": "markup-multi",
+      "description": "Markup v2 multi-mark serialization (bead havi-6953). A freehand pen path (red) plus a rectangle (blue) serialize into ONE SvgSelector; a blur/redact mark drawn over the same still is excluded from the SVG and selectors (it is burned into the pixels instead). The FragmentSelector is the image-pixel bounding-box union of the two non-blur marks. HaviMarkupSerializer reproduces this exact `markupSvg` and `fragment` from the normalized marks (see HaviMarkupSerializerTests).",
+      "input": {
+        "bundleID": "ai.handgemacht.lesewerkstatt.dev",
+        "screen": "ReaderScreen",
+        "viewport": { "width": 500, "height": 1000 },
+        "fragment": { "x": 100, "y": 200, "width": 500, "height": 850 },
+        "markupSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M 100 200 L 150 260 L 220 240\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><rect x=\"400\" y=\"900\" width=\"200\" height=\"150\" fill=\"none\" stroke=\"#0A84FF\" stroke-width=\"6\"/></svg>",
+        "cssPath": "ReaderScreen",
+        "comment": "Circled the glitchy card and boxed the button",
+        "priority": "medium",
+        "deviceInfo": null,
+        "consoleErrors": null,
+        "networkErrors": null,
+        "appLogs": null,
+        "dev": { "project": "lesewerkstatt", "worktree": "markup-multi", "branch": "markup-multi", "commit": null },
+        "contexts": {},
+        "tags": {}
+      },
+      "siblings": { "project": "lesewerkstatt", "worktree": "markup-multi", "branch": "markup-multi" },
+      "envelope": {
+        "@context": "http://www.w3.org/ns/anno.jsonld",
+        "type": "Annotation",
+        "motivation": "commenting",
+        "body": [
+          { "type": "TextualBody", "value": "Circled the glitchy card and boxed the button", "purpose": "commenting" },
+          { "type": "TextualBody", "value": "medium", "purpose": "tagging", "x:labelKey": "priority" },
+          { "type": "Image" }
+        ],
+        "target": {
+          "source": "app://ai.handgemacht.lesewerkstatt.dev/ReaderScreen",
+          "selector": [
+            { "type": "FragmentSelector", "conformsTo": "http://www.w3.org/TR/media-frags/", "value": "xywh=100,200,500,850" },
+            { "type": "CssSelector", "value": "ReaderScreen" },
+            { "type": "SvgSelector", "value": "<svg xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M 100 200 L 150 260 L 220 240\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><rect x=\"400\" y=\"900\" width=\"200\" height=\"150\" fill=\"none\" stroke=\"#0A84FF\" stroke-width=\"6\"/></svg>" }
+          ],
+          "state": { "type": "HttpRequestState", "value": "viewport=500x1000" }
+        },
+        "x:havi": {
+          "dev": { "project": "lesewerkstatt", "worktree": "markup-multi", "branch": "markup-multi" }
+        }
+      }
+    },
+    {
+      "id": "cropped",
+      "description": "Crop tool coordinate projection (bead havi-oukr). A crop rect covering the middle half of the full still (x=0.25,y=0.25,w=0.5,h=0.5 of a 400x800pt / 800x1600px full frame) reprojects everything the envelope reports into the CROPPED image's own space: the viewport (400x800 -> 200x400), and the one surviving mark's FragmentSelector/SvgSelector (400x800px cropped canvas). A second mark drawn fully outside the crop is dropped by HaviCropGeometry.projectMarks before it ever reaches the serializer, so it has no envelope side effect and is not represented here. See HaviCropGeometryTests and HaviKitEnvelopeTests.testCroppedInputMatchesCropPipelineProjection for the projection math.",
+      "input": {
+        "bundleID": "ai.handgemacht.lesewerkstatt.dev",
+        "screen": "ReaderScreen",
+        "viewport": { "width": 200, "height": 400 },
+        "fragment": { "x": 120, "y": 240, "width": 160, "height": 160 },
+        "markupSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"120\" y=\"240\" width=\"160\" height=\"160\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\"/></svg>",
+        "cssPath": "ReaderScreen",
+        "comment": "Cropped to the card before flagging the glitch",
+        "priority": "medium",
+        "deviceInfo": null,
+        "consoleErrors": null,
+        "networkErrors": null,
+        "appLogs": null,
+        "dev": { "project": "lesewerkstatt", "worktree": "capture-two-screen", "branch": "capture-two-screen", "commit": null },
+        "contexts": {},
+        "tags": {}
+      },
+      "siblings": { "project": "lesewerkstatt", "worktree": "capture-two-screen", "branch": "capture-two-screen" },
+      "envelope": {
+        "@context": "http://www.w3.org/ns/anno.jsonld",
+        "type": "Annotation",
+        "motivation": "commenting",
+        "body": [
+          { "type": "TextualBody", "value": "Cropped to the card before flagging the glitch", "purpose": "commenting" },
+          { "type": "TextualBody", "value": "medium", "purpose": "tagging", "x:labelKey": "priority" },
+          { "type": "Image" }
+        ],
+        "target": {
+          "source": "app://ai.handgemacht.lesewerkstatt.dev/ReaderScreen",
+          "selector": [
+            { "type": "FragmentSelector", "conformsTo": "http://www.w3.org/TR/media-frags/", "value": "xywh=120,240,160,160" },
+            { "type": "CssSelector", "value": "ReaderScreen" },
+            { "type": "SvgSelector", "value": "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"120\" y=\"240\" width=\"160\" height=\"160\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\"/></svg>" }
+          ],
+          "state": { "type": "HttpRequestState", "value": "viewport=200x400" }
+        },
+        "x:havi": {
+          "dev": { "project": "lesewerkstatt", "worktree": "capture-two-screen", "branch": "capture-two-screen" }
+        }
+      }
+    }
+  ]
+}
