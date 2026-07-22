@@ -15,10 +15,15 @@ concurrency:
 jobs:
   swift-test:
     name: swift test (macOS host)
-    runs-on: macos-latest
-    timeout-minutes: 20
+    # Org self-hosted Apple Silicon runner (system Xcode + Homebrew). The org has
+    # no GitHub-hosted macOS runners enabled for private repos, so this mirrors
+    # lesewerkstatt's dev-testflight workflow.
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Add Homebrew to PATH
+        run: echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
       - name: Toolchain versions
         run: |
           swift --version
@@ -28,10 +33,12 @@ jobs:
 
   ios-test:
     name: xcodebuild test (iOS Simulator)
-    runs-on: macos-latest
-    timeout-minutes: 30
+    runs-on: [self-hosted, macOS, ARM64, ios-simulator]
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: Add Homebrew to PATH
+        run: echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
       - name: Resolve an available iOS Simulator
         id: sim
         run: |
@@ -76,12 +83,6 @@ jobs:
             -scheme "${{ steps.scheme.outputs.scheme }}" \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
             -resultBundlePath TestResults.xcresult
-      - name: Upload xcresult on failure
-        if: failure()
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcresult
-          path: TestResults.xcresult
-          retention-days: 7
-          if-no-files-found: ignore
+      - name: Clean up result bundle
+        if: always()
+        run: rm -rf TestResults.xcresult
