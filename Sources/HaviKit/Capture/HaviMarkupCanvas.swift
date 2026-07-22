@@ -10,67 +10,101 @@ import UIKit
 /// normalized (0…1) in `HaviMarkupModel`; this view only converts display points
 /// to and from that space.
 ///
-/// The crop tool (bead havi-oukr) layers on top: a persistent dimmed-outside /
-/// bright-inside preview of `HaviCropModel`'s rect, plus eight discrete
-/// draggable handle views (Apple screenshot-editor pattern) shown while `.crop`
-/// is the active tool. The crop rect lives in the same full-image normalized
-/// space as the marks; nothing here projects it — that happens once, at
-/// envelope-build time, via `HaviCropGeometry`.
+/// Crop is a confirmed step (bead havi-od6t). Selecting the crop tool opens crop
+/// mode: the whole still is shown with `HaviCropModel`'s draft rect dimmed-outside
+/// and eight draggable handles. Once confirmed, the canvas DISPLAYS ONLY the
+/// cropped region, scaled up to fill the frame, and every markup tool then draws
+/// on that zoomed view. The zoom is display-only: `HaviCropGeometry`'s display
+/// transform maps canvas points ↔ the full-still normalized space marks live in,
+/// so the crop rect the submit pipeline reads is never touched here.
 struct HaviMarkupCanvas: View {
     let image: UIImage
     @Bindable var model: HaviMarkupModel
     @Bindable var crop: HaviCropModel
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var strokeActive = false
     @State private var cropGrabOffset: CGSize?
 
     private static let cropCoordinateSpace = "haviCropSurface"
 
+    /// In crop mode the whole still is shown (so a crop can be widened); once
+    /// confirmed the canvas zooms into the confirmed crop.
+    private var editingCrop: Bool { model.tool == .crop }
+
+    /// The slice of the full still the canvas currently renders, in full-image
+    /// normalized space — the full frame while cropping, the confirmed crop after.
+    private var visibleRegion: CGRect {
+        editingCrop ? HaviCropGeometry.fullFrame : crop.rect
+    }
+
     var body: some View {
         GeometryReader { proxy in
-            let fitted = fittedRect(in: proxy.size)
+            let region = visibleRegion
+            let content = contentRect(region: region, in: proxy.size)
             ZStack(alignment: .topLeading) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
+                contentLayer(region: region, size: content.size)
+                    .frame(width: content.width, height: content.height, alignment: .topLeading)
+                    .clipped()
+                    .offset(x: content.minX, y: content.minY)
 
-                Canvas { context, size in
-                    for mark in model.marks {
-                        draw(mark, in: context, size: size, selected: mark.id == model.selectedMarkID)
-                    }
-                    if let inProgress = model.inProgress {
-                        draw(inProgress, in: context, size: size, selected: false)
-                    }
-                }
-                .frame(width: fitted.width, height: fitted.height)
-                .offset(x: fitted.minX, y: fitted.minY)
-                .contentShape(Rectangle())
-                .highPriorityGesture(drawGesture(canvasSize: fitted.size))
-                .accessibilityIdentifier("havi-markup-canvas")
-
-                if crop.isCropped {
-                    cropDimOverlay(size: fitted.size)
-                        .frame(width: fitted.width, height: fitted.height)
-                        .offset(x: fitted.minX, y: fitted.minY)
-                        .allowsHitTesting(false)
-                }
-
-                if model.tool == .crop {
-                    cropInteractionOverlay(size: fitted.size)
-                        .offset(x: fitted.minX, y: fitted.minY)
+                if editingCrop {
+                    cropInteractionOverlay(size: content.size)
+                        .offset(x: content.minX, y: content.minY)
                 }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
-        .aspectRatio(imageAspect, contentMode: .fit)
+        .aspectRatio(visibleAspect, contentMode: .fit)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: visibleRegion)
+    }
+
+    // MARK: - Content (image + marks, zoomed into the visible region)
+
+    private func contentLayer(region: CGRect, size: CGSize) -> some View {
+        ZStack(alignment: .topLeading) {
+            scaledImage(region: region, size: size)
+
+            Canvas { context, canvasSize in
+                for mark in model.marks {
+                    draw(mark, in: context, size: canvasSize, region: region, selected: mark.id == model.selectedMarkID)
+                }
+                if let inProgress = model.inProgress {
+                    draw(inProgress, in: context, size: canvasSize, region: region, selected: false)
+                }
+            }
+            .frame(width: size.width, height: size.height)
+            .contentShape(Rectangle())
+            .highPriorityGesture(drawGesture(canvasSize: size, region: region))
+            .accessibilityIdentifier("havi-markup-canvas")
+
+            if editingCrop {
+                cropDimOverlay(size: size)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// The full still, scaled so `region` exactly fills the content bounds — the
+    /// zoom is nothing more than a larger image offset up-and-left and clipped.
+    private func scaledImage(region: CGRect, size: CGSize) -> some View {
+        let fullWidth = region.width > 0 ? size.width / region.width : size.width
+        let fullHeight = region.height > 0 ? size.height / region.height : size.height
+        return Image(uiImage: image)
+            .resizable()
+            .frame(width: fullWidth, height: fullHeight)
+            .offset(x: -region.minX * fullWidth, y: -region.minY * fullHeight)
     }
 
     // MARK: - Crop overlay (design: dimmed outside, bright inside, draggable handles)
 
-    /// The persistent "this is what will actually be uploaded" preview: a
-    /// dark scrim over everything outside the crop rect, shown regardless of
-    /// which tool is active so a crop never surprises the user at submit time.
+    /// The dark scrim over everything outside the draft crop, shown only while
+    /// crop mode is open (the confirmed crop is expressed as the canvas zoom, not
+    /// a scrim). `region` is the full frame here, so crop-rect points map straight
+    /// to canvas points.
     private func cropDimOverlay(size: CGSize) -> some View {
-        let cropRect = displayRect(crop.rect, size: size)
+        let cropRect = displayRect(crop.rect, size: size, region: HaviCropGeometry.fullFrame)
         return Path { path in
             path.addRect(CGRect(origin: .zero, size: size))
             path.addRect(cropRect)
@@ -78,8 +112,8 @@ struct HaviMarkupCanvas: View {
         .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
     }
 
-    /// The crop tool's live border + eight draggable handles, mounted only
-    /// while `.crop` is the active tool.
+    /// The crop tool's live border + eight draggable handles, mounted only while
+    /// crop mode is open.
     private func cropInteractionOverlay(size: CGSize) -> some View {
         ZStack(alignment: .topLeading) {
             cropBorder(size: size)
@@ -93,12 +127,12 @@ struct HaviMarkupCanvas: View {
     }
 
     private func cropBorder(size: CGSize) -> some View {
-        Path(displayRect(crop.rect, size: size))
+        Path(displayRect(crop.rect, size: size, region: HaviCropGeometry.fullFrame))
             .stroke(Color.white, style: StrokeStyle(lineWidth: 2))
     }
 
     private func cropHandle(_ handle: HaviCropGeometry.Handle, size: CGSize) -> some View {
-        let point = display(HaviCropGeometry.anchor(of: handle, in: crop.rect), size: size)
+        let point = display(HaviCropGeometry.anchor(of: handle, in: crop.rect), size: size, region: HaviCropGeometry.fullFrame)
         return Circle()
             .fill(Color.white)
             .frame(width: 14, height: 14)
@@ -134,10 +168,10 @@ struct HaviMarkupCanvas: View {
 
     // MARK: - Gesture
 
-    private func drawGesture(canvasSize: CGSize) -> some Gesture {
+    private func drawGesture(canvasSize: CGSize, region: CGRect) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
-                let point = normalized(value.location, in: canvasSize)
+                let point = HaviCropGeometry.normalizedFromCanvas(value.location, contentSize: canvasSize, visibleRegion: region)
                 if strokeActive {
                     model.extend(to: point)
                 } else {
@@ -151,38 +185,30 @@ struct HaviMarkupCanvas: View {
             }
     }
 
-    private func normalized(_ point: CGPoint, in size: CGSize) -> CGPoint {
-        guard size.width > 0, size.height > 0 else { return .zero }
-        return CGPoint(
-            x: min(max(0, point.x / size.width), 1),
-            y: min(max(0, point.y / size.height), 1)
-        )
-    }
-
     // MARK: - Rendering
 
-    private func draw(_ mark: HaviMark, in context: GraphicsContext, size: CGSize, selected: Bool) {
+    private func draw(_ mark: HaviMark, in context: GraphicsContext, size: CGSize, region: CGRect, selected: Bool) {
         let color = mark.color.swiftUIColor
         switch mark.shape {
         case .pen(let points):
-            context.stroke(strokePath(points, size: size), with: .color(color), style: roundStyle(lineWidth: 4))
+            context.stroke(strokePath(points, size: size, region: region), with: .color(color), style: roundStyle(lineWidth: 4))
         case .highlighter(let points):
-            context.stroke(strokePath(points, size: size), with: .color(color.opacity(0.35)), style: roundStyle(lineWidth: 16))
+            context.stroke(strokePath(points, size: size, region: region), with: .color(color.opacity(0.35)), style: roundStyle(lineWidth: 16))
         case .arrow(let from, let to):
-            drawArrow(from: from, to: to, color: color, in: context, size: size)
+            drawArrow(from: from, to: to, color: color, in: context, size: size, region: region)
         case .rectangle(let rect):
-            context.stroke(Path(displayRect(rect, size: size)), with: .color(color), style: StrokeStyle(lineWidth: 4))
+            context.stroke(Path(displayRect(rect, size: size, region: region)), with: .color(color), style: StrokeStyle(lineWidth: 4))
         case .blur(let rect):
-            drawBlurPlaceholder(displayRect(rect, size: size), in: context)
+            drawBlurPlaceholder(displayRect(rect, size: size, region: region), in: context)
         }
         if selected {
-            drawSelection(mark.normalizedBounds, size: size, in: context)
+            drawSelection(mark.normalizedBounds, size: size, region: region, in: context)
         }
     }
 
-    private func drawArrow(from: CGPoint, to: CGPoint, color: Color, in context: GraphicsContext, size: CGSize) {
-        let tail = display(from, size: size)
-        let tip = display(to, size: size)
+    private func drawArrow(from: CGPoint, to: CGPoint, color: Color, in context: GraphicsContext, size: CGSize, region: CGRect) {
+        let tail = display(from, size: size, region: region)
+        let tip = display(to, size: size, region: region)
         var shaft = Path()
         shaft.move(to: tail)
         shaft.addLine(to: tip)
@@ -204,8 +230,8 @@ struct HaviMarkupCanvas: View {
         context.stroke(path, with: .color(.white.opacity(0.6)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
     }
 
-    private func drawSelection(_ bounds: CGRect, size: CGSize, in context: GraphicsContext) {
-        let rect = displayRect(bounds, size: size).insetBy(dx: -6, dy: -6)
+    private func drawSelection(_ bounds: CGRect, size: CGSize, region: CGRect, in context: GraphicsContext) {
+        let rect = displayRect(bounds, size: size, region: region).insetBy(dx: -6, dy: -6)
         context.stroke(
             Path(roundedRect: rect, cornerRadius: 6),
             with: .color(Self.accent),
@@ -223,11 +249,11 @@ struct HaviMarkupCanvas: View {
         }
     }
 
-    private func strokePath(_ points: [CGPoint], size: CGSize) -> Path {
+    private func strokePath(_ points: [CGPoint], size: CGSize, region: CGRect) -> Path {
         var path = Path()
         guard let first = points.first else { return path }
-        path.move(to: display(first, size: size))
-        for point in points.dropFirst() { path.addLine(to: display(point, size: size)) }
+        path.move(to: display(first, size: size, region: region))
+        for point in points.dropFirst() { path.addLine(to: display(point, size: size, region: region)) }
         return path
     }
 
@@ -235,33 +261,37 @@ struct HaviMarkupCanvas: View {
         StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
     }
 
-    private func display(_ point: CGPoint, size: CGSize) -> CGPoint {
-        CGPoint(x: point.x * size.width, y: point.y * size.height)
+    private func display(_ point: CGPoint, size: CGSize, region: CGRect) -> CGPoint {
+        HaviCropGeometry.canvasFromNormalized(point, contentSize: size, visibleRegion: region)
     }
 
-    private func displayRect(_ rect: CGRect, size: CGSize) -> CGRect {
+    private func displayRect(_ rect: CGRect, size: CGSize, region: CGRect) -> CGRect {
         let standardized = rect.standardized
-        return CGRect(
-            x: standardized.minX * size.width,
-            y: standardized.minY * size.height,
-            width: standardized.width * size.width,
-            height: standardized.height * size.height
-        )
+        let origin = display(CGPoint(x: standardized.minX, y: standardized.minY), size: size, region: region)
+        let far = display(CGPoint(x: standardized.maxX, y: standardized.maxY), size: size, region: region)
+        return CGRect(x: origin.x, y: origin.y, width: far.x - origin.x, height: far.y - origin.y)
     }
 
     // MARK: - Layout
 
-    private var imageAspect: CGFloat {
-        image.size.height > 0 ? image.size.width / image.size.height : 1
+    /// The aspect ratio of the currently visible slice: the full still's while
+    /// cropping, the confirmed crop's once zoomed. Driving the canvas frame with
+    /// this is what re-frames the sheet so the crop fills the space.
+    private var visibleAspect: CGFloat {
+        let region = visibleRegion
+        let width = image.size.width * region.width
+        let height = image.size.height * region.height
+        return height > 0 ? width / height : 1
     }
 
-    private func fittedRect(in size: CGSize) -> CGRect {
-        guard image.size.width > 0, image.size.height > 0 else {
-            return CGRect(origin: .zero, size: size)
-        }
-        let scale = min(size.width / image.size.width, size.height / image.size.height)
-        let width = image.size.width * scale
-        let height = image.size.height * scale
+    /// The rect within `size` that renders `region`, aspect-fit and centered.
+    /// When the enclosing frame already matches `visibleAspect` this fills it.
+    private func contentRect(region: CGRect, in size: CGSize) -> CGRect {
+        let pixelWidth = max(image.size.width * region.width, 1)
+        let pixelHeight = max(image.size.height * region.height, 1)
+        let scale = min(size.width / pixelWidth, size.height / pixelHeight)
+        let width = pixelWidth * scale
+        let height = pixelHeight * scale
         return CGRect(x: (size.width - width) / 2, y: (size.height - height) / 2, width: width, height: height)
     }
 
