@@ -298,6 +298,11 @@ struct HaviMarkupCanvas: View {
     /// Brand accent (HAVI red #E8542F), shared by the submit button, priority
     /// segments, and the floating capture button.
     static let accent = Color(red: 0.909, green: 0.329, blue: 0.184)
+
+    /// Positive/success signal — system green. Used for the "Connected to HAVI"
+    /// and "Report sent" states so success never reads through the red-orange
+    /// brand accent (which looks like an error).
+    static let success = Color.green
 }
 
 extension HaviMarkColor {
