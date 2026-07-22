@@ -129,6 +129,31 @@ final class HaviCaptureModelStateTests: XCTestCase {
         XCTAssertTrue(model.crop.isEditing, "Reset keeps crop mode open so the user can re-drag or confirm the full frame")
     }
 
+    // MARK: - Next is gated on an unconfirmed crop (crop must be confirmed first)
+
+    func testCannotProceedWhileCropModeIsActive() {
+        let model = makeModel()
+        XCTAssertTrue(model.canProceed, "a fresh model with no open crop can advance")
+
+        model.markup.selectTool(.arrow)
+        model.beginCropEditing(previousTool: .arrow)
+        XCTAssertTrue(model.crop.isEditing)
+        XCTAssertFalse(model.canProceed, "an open, unconfirmed crop draft must block Next")
+
+        model.crop.updateResize(handle: .bottomRight, to: CGPoint(x: 0.6, y: 0.6))
+        model.confirmCrop()
+        XCTAssertTrue(model.canProceed, "confirming the crop re-enables Next")
+    }
+
+    func testCancellingAnOpenCropReEnablesProceeding() {
+        let model = makeModel()
+        model.beginCropEditing(previousTool: .pen)
+        XCTAssertFalse(model.canProceed, "an open crop draft blocks Next")
+
+        model.cancelCrop()
+        XCTAssertTrue(model.canProceed, "cancelling the crop re-enables Next")
+    }
+
     func testGoingBackToScreenOneAfterASubmitFailureKeepsMarksAndCropEditable() async {
         let model = makeModel()
         model.markup.selectTool(.rectangle)

@@ -197,7 +197,7 @@ struct HaviCaptureImageScreen: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(HaviMarkupCanvas.accent)
-        .disabled(model.isSubmitting)
+        .disabled(!model.canProceed)
         .accessibilityIdentifier("havi-next-button")
     }
 }

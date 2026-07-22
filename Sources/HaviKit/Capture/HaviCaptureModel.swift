@@ -52,6 +52,12 @@ final class HaviCaptureModel {
 
     var isSubmitting: Bool { phase == .submitting }
 
+    /// Whether the flow may advance to Screen 2. Crop is a confirmed step, so an
+    /// open crop draft (`crop.isEditing`) must be confirmed or cancelled first —
+    /// advancing with a live, unconfirmed crop would bypass the very confirmation
+    /// the crop tray exists for.
+    var canProceed: Bool { !isSubmitting && !crop.isEditing }
+
     // MARK: - Crop mode (bead havi-od6t)
 
     /// Opens crop mode: remembers the tool to return to and snapshots the crop so
