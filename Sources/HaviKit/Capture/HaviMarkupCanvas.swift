@@ -22,6 +22,7 @@ struct HaviMarkupCanvas: View {
     @Bindable var crop: HaviCropModel
 
     @State private var strokeActive = false
+    @State private var cropGrabOffset: CGSize?
 
     private static let cropCoordinateSpace = "haviCropSurface"
 
@@ -109,11 +110,22 @@ struct HaviMarkupCanvas: View {
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.cropCoordinateSpace))
                     .onChanged { value in
+                        let offset = cropGrabOffset ?? {
+                            let captured = CGSize(
+                                width: point.x - value.startLocation.x,
+                                height: point.y - value.startLocation.y
+                            )
+                            cropGrabOffset = captured
+                            return captured
+                        }()
                         let normalized = CGPoint(
-                            x: value.location.x / size.width,
-                            y: value.location.y / size.height
+                            x: (value.location.x + offset.width) / size.width,
+                            y: (value.location.y + offset.height) / size.height
                         )
                         crop.updateResize(handle: handle, to: normalized)
+                    }
+                    .onEnded { _ in
+                        cropGrabOffset = nil
                     }
             )
             .accessibilityLabel(handle.accessibilityLabel)

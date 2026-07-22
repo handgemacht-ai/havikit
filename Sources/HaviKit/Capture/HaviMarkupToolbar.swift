@@ -1,7 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 
-/// The markup tool bar (bead havi-6953): the six tools with a clear selected
+/// The markup tool bar (bead havi-6953): the seven tools with a clear selected
 /// state, object-level undo/redo, and a delete affordance that appears only when
 /// the select tool has a mark chosen. Leaf accessibility identifiers ride on each
 /// control (never the container), per the repo UI-test rule.

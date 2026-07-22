@@ -3,7 +3,8 @@ import Foundation
 /// Immutable value handed to `HaviUploader` on submit (design §1). Carries the
 /// assembled envelope JSON string, the encoded screenshot, the load-bearing
 /// multipart siblings, the snapshotted credential, and a reencoder over the
-/// frozen source image for the server-driven fallbacks — nothing mutable, so a
+/// cropped, redacted outgoing image for the server-driven fallbacks — nothing
+/// mutable, so a
 /// later context/tag mutation or credential change cannot race an in-flight send.
 public struct PendingAnnotation: Sendable {
     public let annotationJSON: String
