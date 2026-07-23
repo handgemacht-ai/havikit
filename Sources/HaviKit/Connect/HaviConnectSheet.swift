@@ -9,8 +9,8 @@ import UIKit
 /// screen flips to the success state the moment the poll loop connects — the
 /// browser dismisses itself. Approving on another signed-in device (the short
 /// code + full URL) is a demoted, collapsed fallback, and manual token paste
-/// stays available below it. A "Connected as … / Disconnect" row handles local
-/// revocation.
+/// stays available below it. A "Connected as … / Sign out" row (with a confirm
+/// step) handles local revocation.
 ///
 /// Leaf-only accessibility identifiers, per the repo UI-test rule.
 struct HaviConnectSheet: View {
@@ -21,6 +21,7 @@ struct HaviConnectSheet: View {
     @State private var approvalBrowser = HaviApprovalBrowser()
     @State private var pasteExpanded = false
     @State private var otherDeviceExpanded = false
+    @State private var confirmSignOut = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
@@ -89,7 +90,7 @@ struct HaviConnectSheet: View {
 
     /// The connected success state: an unmistakably positive composition — a
     /// system-green checkmark on a frosted success-tinted tray — while the sheet
-    /// stays on HAVI branding (title, and the accent-tinted Disconnect action).
+    /// stays on HAVI branding (title, and the accent-tinted Sign out action).
     private func connectedCard(_ session: HaviConnectedSession) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Label {
@@ -102,10 +103,21 @@ struct HaviConnectSheet: View {
             Text(identityLine(session))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Button("Disconnect") { model.disconnect() }
+            Button("Sign out") { confirmSignOut = true }
                 .buttonStyle(.bordered)
                 .tint(HaviMarkupCanvas.accent)
-                .accessibilityIdentifier("havi-disconnect")
+                .accessibilityIdentifier("havi-sign-out")
+                .confirmationDialog(
+                    "Sign out of HAVI?",
+                    isPresented: $confirmSignOut,
+                    titleVisibility: .visible
+                ) {
+                    Button("Sign out", role: .destructive) { model.disconnect() }
+                        .accessibilityIdentifier("havi-sign-out-confirm")
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This unlinks HAVI on this device. You can sign in again anytime.")
+                }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

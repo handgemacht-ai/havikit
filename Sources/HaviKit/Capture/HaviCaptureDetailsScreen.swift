@@ -27,7 +27,9 @@ struct HaviCaptureDetailsScreen: View {
             VStack(alignment: .leading, spacing: 22) {
                 diagnosticsBadge
 
-                if !runtime.isConnected {
+                if runtime.isConnected {
+                    connectedStatusRow
+                } else {
                     connectPrompt
                 }
                 commentField
@@ -98,6 +100,63 @@ struct HaviCaptureDetailsScreen: View {
                 .strokeBorder(HaviMarkupCanvas.accent.opacity(0.18), lineWidth: 1)
         )
         .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    /// The always-present connected-state entry point: a compact frosted tray with
+    /// a green presence dot and the workspace identity, whose gear opens the
+    /// connect sheet on its connected card — the only place a connected developer
+    /// can reach Sign out. Mirrors the disconnected `connectPrompt` so the two read
+    /// as one component in two states.
+    private var connectedStatusRow: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(HaviMarkupCanvas.success)
+                .frame(width: 9, height: 9)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Connected to HAVI")
+                    .font(.subheadline.weight(.semibold))
+                Text(connectedIdentityLine)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Button { openConnect(reconnect: false) } label: {
+                Image(systemName: "gearshape")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .tint(HaviMarkupCanvas.accent)
+            .accessibilityLabel("Manage HAVI connection")
+            .accessibilityIdentifier("havi-manage-connection")
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(HaviMarkupCanvas.success.opacity(0.08))
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(.regularMaterial)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(HaviMarkupCanvas.success.opacity(0.22), lineWidth: 1)
+        )
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var connectedIdentityLine: String {
+        guard let session = runtime.tokenStore.connectedSession else {
+            return "This device is linked to your workspace."
+        }
+        let workspace = session.workspaceName ?? session.workspaceID
+        if let user = session.userName, !user.isEmpty {
+            return "\(user) · \(workspace)"
+        }
+        return workspace
     }
 
     private var commentField: some View {
