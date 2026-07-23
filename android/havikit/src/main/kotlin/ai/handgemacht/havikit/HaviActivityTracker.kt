@@ -20,6 +20,8 @@ internal class HaviActivityTracker : Application.ActivityLifecycleCallbacks {
         fun onResumed(activity: Activity) {}
 
         fun onPaused(activity: Activity) {}
+
+        fun onDestroyed(activity: Activity) {}
     }
 
     var listener: Listener? = null
@@ -62,5 +64,7 @@ internal class HaviActivityTracker : Application.ActivityLifecycleCallbacks {
         outState: Bundle,
     ) = Unit
 
-    override fun onActivityDestroyed(activity: Activity) = Unit
+    override fun onActivityDestroyed(activity: Activity) {
+        listener?.onDestroyed(activity)
+    }
 }

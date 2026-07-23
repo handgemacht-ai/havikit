@@ -1,5 +1,7 @@
 package ai.handgemacht.havikit
 
+import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -132,9 +134,9 @@ public object HaviMarkupSerializer {
         val tip = HaviPointF(pixelX(to, imageSize).toDouble(), pixelY(to, imageSize).toDouble())
         val tail = HaviPointF(pixelX(from, imageSize).toDouble(), pixelY(from, imageSize).toDouble())
         val head = arrowHead(tip, tail, ARROW_HEAD_LENGTH, ARROW_HEAD_WIDTH)
-        val points = head.joinToString(" ") { "${it.x.roundToInt()},${it.y.roundToInt()}" }
-        return "<line x1=\"${tail.x.roundToInt()}\" y1=\"${tail.y.roundToInt()}\" " +
-            "x2=\"${tip.x.roundToInt()}\" y2=\"${tip.y.roundToInt()}\" " +
+        val points = head.joinToString(" ") { "${it.x.roundedHalfAwayFromZero()},${it.y.roundedHalfAwayFromZero()}" }
+        return "<line x1=\"${tail.x.roundedHalfAwayFromZero()}\" y1=\"${tail.y.roundedHalfAwayFromZero()}\" " +
+            "x2=\"${tip.x.roundedHalfAwayFromZero()}\" y2=\"${tip.y.roundedHalfAwayFromZero()}\" " +
             "stroke=\"$stroke\" stroke-width=\"$ARROW_WIDTH\" stroke-linecap=\"round\"/>" +
             "<polygon points=\"$points\" fill=\"$stroke\"/>"
     }
@@ -148,6 +150,14 @@ public object HaviMarkupSerializer {
         point: HaviPointF,
         size: HaviSize,
     ): Int = clamp((clampUnit(point.y) * size.height).roundToInt(), size.height)
+
+    // iOS renders arrow coordinates with Swift's `Double.rounded()`, which rounds halves
+    // away from zero; Kotlin's `roundToInt()` rounds halves toward positive infinity. They
+    // diverge only for a barb landing on a negative exact-half pixel, so match iOS here.
+    private fun Double.roundedHalfAwayFromZero(): Int {
+        val magnitude = floor(abs(this) + 0.5)
+        return (if (this < 0) -magnitude else magnitude).toInt()
+    }
 
     private fun clampUnit(value: Double): Double = min(max(0.0, value), 1.0)
 

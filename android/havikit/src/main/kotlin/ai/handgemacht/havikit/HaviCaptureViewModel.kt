@@ -122,20 +122,23 @@ internal class HaviCaptureViewModel(
         val workspace = runtime.resolvedWorkspaceId()
 
         scope.launch {
-            val result =
+            val prepared =
                 withContext(Dispatchers.Default) {
-                    val prepared =
-                        HaviSubmitPipeline.prepare(
-                            frame = frame,
-                            draft = draft,
-                            config = config,
-                            workspaceId = workspace,
-                            bearerToken = token,
-                        )
-                            ?: return@withContext HaviSubmitResult.Failure(
-                                HaviSubmitFailure("Couldn't prepare the screenshot.", HaviSubmitFailureKind.TERMINAL, null),
-                            )
-                    runtime.uploader.submit(prepared.pending)
+                    HaviSubmitPipeline.prepare(
+                        frame = frame,
+                        draft = draft,
+                        config = config,
+                        workspaceId = workspace,
+                        bearerToken = token,
+                    )
+                }
+            val result =
+                if (prepared == null) {
+                    HaviSubmitResult.Failure(
+                        HaviSubmitFailure("Couldn't prepare the screenshot.", HaviSubmitFailureKind.TERMINAL, null),
+                    )
+                } else {
+                    withContext(Dispatchers.IO) { runtime.uploader.submit(prepared.pending) }
                 }
 
             when (result) {

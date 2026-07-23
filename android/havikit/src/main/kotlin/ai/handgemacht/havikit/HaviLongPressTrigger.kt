@@ -3,6 +3,8 @@ package ai.handgemacht.havikit
 import android.app.Activity
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyboardShortcutGroup
+import android.view.Menu
 import android.view.MotionEvent
 import android.view.Window
 import kotlin.math.abs
@@ -111,6 +113,21 @@ internal class HaviLongPressTrigger(
         override fun dispatchTouchEvent(event: MotionEvent): Boolean {
             onTouch(event)
             return base.dispatchTouchEvent(event)
+        }
+
+        // Kotlin interface delegation (`by base`) does not forward the interface's Java
+        // default methods, so these are forwarded explicitly to keep the wrapped callback
+        // whole (both APIs are <= minSdk 26).
+        override fun onProvideKeyboardShortcuts(
+            data: MutableList<KeyboardShortcutGroup>?,
+            menu: Menu?,
+            deviceId: Int,
+        ) {
+            base.onProvideKeyboardShortcuts(data, menu, deviceId)
+        }
+
+        override fun onPointerCaptureChanged(hasCapture: Boolean) {
+            base.onPointerCaptureChanged(hasCapture)
         }
     }
 

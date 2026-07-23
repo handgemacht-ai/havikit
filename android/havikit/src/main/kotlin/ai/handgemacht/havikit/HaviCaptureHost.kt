@@ -15,6 +15,11 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
  * detached and the controller released via [HaviRuntime.finishCapture]; a
  * successful submit dismisses the sheet and raises the brief "Report sent"
  * confirmation.
+ *
+ * If the host Activity is torn down while the sheet is up (a configuration change —
+ * rotation, dark-mode/font/locale toggle, multi-window resize — recreates it),
+ * [onHostDestroyed] detaches the overlay and releases the controller so capture is
+ * not left permanently disabled with a leaked Activity.
  */
 internal class HaviCaptureHost(
     private val runtime: HaviRuntime,
@@ -38,7 +43,7 @@ internal class HaviCaptureHost(
 
         val view =
             ComposeView(activity).apply {
-                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
                 layoutParams =
                     FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
@@ -62,6 +67,15 @@ internal class HaviCaptureHost(
     private fun confirmSubmission(activity: Activity) {
         dismiss()
         Toast.makeText(activity.applicationContext, "Report sent", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * The Activity hosting the overlay was destroyed (e.g. a configuration change
+     * recreated it). Tear the sheet down so the controller is released and neither the
+     * destroyed Activity nor its detached ComposeView is retained. Main-thread only.
+     */
+    fun onHostDestroyed(activity: Activity) {
+        if (host === activity) dismiss()
     }
 
     fun dismiss() {
