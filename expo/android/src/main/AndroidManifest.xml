@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      The bridge ships no <meta-data> of its own (parity with the :havikit AAR).
+      Config flows at runtime through JS `start(config)`, so a release host that
+      never calls it boots fully inert.
+    -->
+</manifest>
