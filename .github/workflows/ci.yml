@@ -14,6 +14,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  expo-ts:
+    name: expo bridge (TypeScript, Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: expo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: expo/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck bridge (tsc --noEmit)
+        run: npx tsc --noEmit
+      - name: Build config plugin (tsc --build plugin)
+        run: npx tsc --build plugin --force
+      - name: Lint
+        run: npm run lint
+      - name: Validate expo-module.config.json
+        run: node -e "JSON.parse(require('fs').readFileSync('expo-module.config.json','utf8'))"
+
   swift-test:
     name: swift test (macOS host)
     # GitHub-hosted macOS runner (free for public repos, preinstalled Xcode).
