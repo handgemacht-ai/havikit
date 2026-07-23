@@ -177,4 +177,79 @@ public object HaviCropGeometry {
             height = max(1, (imageSize.height * clampedCrop.height).roundToInt()),
         )
     }
+
+    // Display transform (canvas point <-> full-image normalized). The canvas shows
+    // only [visibleRegion] of the still, scaled to fill a content box of
+    // [contentWidth] x [contentHeight]; marks + gestures always speak full-image
+    // normalized (0..1) space, so these two are the only bridge to canvas pixels.
+    // With [visibleRegion] == [fullFrame] both reduce to the plain point / size map.
+
+    /** A content-local canvas point → full-image normalized point, clamped into [visibleRegion]. */
+    public fun normalizedFromCanvas(
+        canvasX: Double,
+        canvasY: Double,
+        contentWidth: Double,
+        contentHeight: Double,
+        visibleRegion: HaviRectF,
+    ): HaviPointF {
+        if (contentWidth <= 0 || contentHeight <= 0) return HaviPointF(visibleRegion.minX, visibleRegion.minY)
+        val relative =
+            HaviPointF(
+                x = min(max(0.0, canvasX / contentWidth), 1.0),
+                y = min(max(0.0, canvasY / contentHeight), 1.0),
+            )
+        return unproject(relative, visibleRegion)
+    }
+
+    /** A full-image normalized point → content-local canvas point within [visibleRegion]. */
+    public fun canvasFromNormalized(
+        point: HaviPointF,
+        contentWidth: Double,
+        contentHeight: Double,
+        visibleRegion: HaviRectF,
+    ): HaviPointF {
+        val relative = project(point, visibleRegion)
+        return HaviPointF(relative.x * contentWidth, relative.y * contentHeight)
+    }
+
+    /**
+     * Whether [mark] is a deliberate mark rather than an accidental tap, judged by
+     * its on-screen extent: the mark is projected into [visibleRegion]'s own 0..1
+     * space so [HaviCaptureGeometry.MIN_MARKUP_FRACTION] always means the same
+     * fraction of the visible (possibly zoomed) view. Identity when
+     * [visibleRegion] == [fullFrame].
+     */
+    public fun isMeaningfulMark(
+        mark: HaviMark,
+        visibleRegion: HaviRectF = fullFrame,
+    ): Boolean =
+        when (val s = project(mark, visibleRegion).shape) {
+            is HaviMark.Shape.Pen -> s.points.size >= 2 && markSpan(s.points) >= HaviCaptureGeometry.MIN_MARKUP_FRACTION
+            is HaviMark.Shape.Highlighter ->
+                s.points.size >= 2 && markSpan(s.points) >= HaviCaptureGeometry.MIN_MARKUP_FRACTION
+            is HaviMark.Shape.Arrow -> {
+                val dx = s.to.x - s.from.x
+                val dy = s.to.y - s.from.y
+                kotlin.math.hypot(dx, dy) >= HaviCaptureGeometry.MIN_MARKUP_FRACTION
+            }
+            is HaviMark.Shape.Rectangle -> HaviCaptureGeometry.isMeaningful(s.rect.standardized())
+            is HaviMark.Shape.Blur -> HaviCaptureGeometry.isMeaningful(s.rect.standardized())
+        }
+
+    /**
+     * The select-tool hit test made zoom-aware: both the tap [point] and the
+     * [mark] are projected into [visibleRegion]'s own 0..1 space, so the fixed
+     * [tolerance] covers the same on-screen distance at any zoom.
+     */
+    public fun markHitTest(
+        mark: HaviMark,
+        point: HaviPointF,
+        tolerance: Double,
+        visibleRegion: HaviRectF = fullFrame,
+    ): Boolean = project(mark, visibleRegion).hitTest(project(point, visibleRegion), tolerance)
+
+    private fun markSpan(points: List<HaviPointF>): Double {
+        val bounds = HaviRectF.boundsOf(points)
+        return max(bounds.width, bounds.height)
+    }
 }

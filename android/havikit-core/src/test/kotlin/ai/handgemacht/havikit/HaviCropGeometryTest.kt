@@ -33,4 +33,39 @@ class HaviCropGeometryTest {
         val resized = HaviCropGeometry.resize(HaviRectF(0.0, 0.0, 1.0, 1.0), HaviCropGeometry.Handle.RIGHT, HaviPointF(0.0, 0.5))
         assertTrue(resized.width >= HaviCropGeometry.MIN_CROP_FRACTION)
     }
+
+    @Test
+    fun canvasRoundTripIsIdentityOnFullFrame() {
+        val normalized = HaviCropGeometry.normalizedFromCanvas(50.0, 100.0, 200.0, 400.0, HaviCropGeometry.fullFrame)
+        assertEquals(0.25, normalized.x, 1e-9)
+        assertEquals(0.25, normalized.y, 1e-9)
+        val canvas = HaviCropGeometry.canvasFromNormalized(normalized, 200.0, 400.0, HaviCropGeometry.fullFrame)
+        assertEquals(50.0, canvas.x, 1e-9)
+        assertEquals(100.0, canvas.y, 1e-9)
+    }
+
+    @Test
+    fun canvasMapsIntoZoomedVisibleRegion() {
+        // Center of the content maps to the center of the visible crop, in full-image space.
+        val normalized = HaviCropGeometry.normalizedFromCanvas(100.0, 200.0, 200.0, 400.0, crop)
+        assertEquals(crop.midX, normalized.x, 1e-9)
+        assertEquals(crop.midY, normalized.y, 1e-9)
+    }
+
+    @Test
+    fun meaningfulMarkRejectsTapButKeepsDeliberateStroke() {
+        val tap = HaviMark(HaviMark.Shape.Pen(listOf(HaviPointF(0.5, 0.5), HaviPointF(0.5005, 0.5005))), HaviMarkColor.Red)
+        val stroke = HaviMark(HaviMark.Shape.Pen(listOf(HaviPointF(0.2, 0.2), HaviPointF(0.6, 0.6))), HaviMarkColor.Red)
+        assertTrue(!HaviCropGeometry.isMeaningfulMark(tap))
+        assertTrue(HaviCropGeometry.isMeaningfulMark(stroke))
+    }
+
+    @Test
+    fun hitTestIsZoomAwareAcrossVisibleRegion() {
+        val mark = HaviMark(HaviMark.Shape.Rectangle(HaviRectF(0.4, 0.4, 0.1, 0.1)), HaviMarkColor.Red)
+        // A point just outside the mark in full space is a miss with no zoom...
+        assertTrue(!HaviCropGeometry.markHitTest(mark, HaviPointF(0.6, 0.6), 0.03))
+        // ...but a point inside the mark hits regardless of the visible region.
+        assertTrue(HaviCropGeometry.markHitTest(mark, HaviPointF(0.45, 0.45), 0.03, crop))
+    }
 }
