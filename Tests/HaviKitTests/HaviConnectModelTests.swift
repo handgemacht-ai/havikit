@@ -56,7 +56,7 @@ final class HaviConnectModelTests: XCTestCase {
     /// A runtime whose connect service is the stub-backed one, with a no-op sleep
     /// (fast) or a parking sleep that opens `enteredSleep` and then blocks so a
     /// test can catch the loop at `.awaiting`.
-    private func stubbedModel(store: HaviTokenStore, enteredSleep: AsyncGate? = nil) -> HaviConnectModel {
+    private func stubbedModel(store: HaviTokenStore, reconnect: Bool = true, enteredSleep: AsyncGate? = nil) -> HaviConnectModel {
         let service = HaviConnectService(
             config: connectConfig(),
             tokenStore: store,
@@ -68,7 +68,7 @@ final class HaviConnectModelTests: XCTestCase {
             }
         )
         let runtime = HaviRuntime(config: connectConfig(), tokenStore: store, connectService: service)
-        return HaviConnectModel(runtime: runtime, reconnect: true)
+        return HaviConnectModel(runtime: runtime, reconnect: reconnect)
     }
 
     func testNoApproveURLAndSignInInertBeforeALinkIsPending() {
@@ -215,6 +215,86 @@ final class HaviConnectModelTests: XCTestCase {
         }
         XCTAssertEqual(firstLink.deviceCode, secondLink.deviceCode, "onAppear must not mint a new code")
         XCTAssertEqual(StubURLProtocol.consumedCount, 2, "no second create-link request")
+
+        model.cancel()
+    }
+
+    // MARK: - Reachable sign-out (connect-sheet entry point)
+
+    /// The new entry point: a CONNECTED developer opens the connect sheet
+    /// (`reconnect: false`) from the capture details screen's status row. With a
+    /// credential in the store the model must open on the connected card — the only
+    /// place Sign out is reachable — rather than kicking a fresh pairing.
+    func testOpeningWhileConnectedLandsOnConnectedCard() {
+        let store = HaviTokenStore(backing: HaviInMemoryCredentialBacking())
+        store.store(HaviConnectedSession(
+            accessToken: "tok-live", workspaceID: "ws-live",
+            userName: "marco@alimax.at", workspaceName: "Team HAVI"
+        ))
+        let runtime = HaviRuntime(config: .inert, tokenStore: store)
+        let model = HaviConnectModel(runtime: runtime, reconnect: false)
+
+        guard case .connected(let session) = model.phase else {
+            return XCTFail("connected entry point must open the connected card, got \(model.phase)")
+        }
+        XCTAssertEqual(session.workspaceID, "ws-live")
+        XCTAssertEqual(session.workspaceName, "Team HAVI")
+        XCTAssertNotNil(model.connectedSession)
+    }
+
+    /// After confirming Sign out, the credential is cleared and the sheet lands back
+    /// on the normal connect prompt (a fresh `.awaiting` link) so a new sign-in can
+    /// be tested immediately.
+    func testSignOutClearsCredentialAndLandsOnConnectPrompt() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.enqueue(status: 201, json: createLinkJSON)
+        StubURLProtocol.enqueue(status: 202, json: pendingJSON)
+
+        let store = HaviTokenStore(backing: HaviInMemoryCredentialBacking())
+        store.store(HaviConnectedSession(
+            accessToken: "tok-live", workspaceID: "ws-live",
+            userName: "marco@alimax.at", workspaceName: "Team HAVI"
+        ))
+        let enteredSleep = AsyncGate()
+        let model = stubbedModel(store: store, reconnect: false, enteredSleep: enteredSleep)
+
+        guard case .connected = model.phase else {
+            return XCTFail("expected connected on open, got \(model.phase)")
+        }
+
+        model.disconnect() // "Sign out" confirmed
+        XCTAssertFalse(store.hasCredential, "sign-out clears the stored credential")
+
+        await enteredSleep.opened()
+        guard case .awaiting = model.phase else {
+            return XCTFail("expected the connect prompt (awaiting) after sign-out, got \(model.phase)")
+        }
+        XCTAssertNil(model.connectedSession)
+
+        model.cancel()
+    }
+
+    /// After sign-out, a subsequent reconcile (app returning to the foreground) must
+    /// NOT resurrect the connected state from the now-empty store.
+    func testSignOutIsNotResurrectedByReconcile() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.enqueue(status: 201, json: createLinkJSON)
+        StubURLProtocol.enqueue(status: 202, json: pendingJSON)
+
+        let store = HaviTokenStore(backing: HaviInMemoryCredentialBacking())
+        store.store(HaviConnectedSession(accessToken: "tok-live", workspaceID: "ws-live"))
+        let enteredSleep = AsyncGate()
+        let model = stubbedModel(store: store, reconnect: false, enteredSleep: enteredSleep)
+
+        model.disconnect()
+        await enteredSleep.opened()
+        XCTAssertFalse(store.hasCredential)
+
+        model.applicationBecameActive() // reconcile from the empty store
+        if case .connected = model.phase {
+            return XCTFail("sign-out must not be resurrected by reconcile")
+        }
+        XCTAssertNil(model.connectedSession)
 
         model.cancel()
     }
