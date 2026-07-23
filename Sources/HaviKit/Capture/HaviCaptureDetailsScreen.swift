@@ -28,7 +28,9 @@ struct HaviCaptureDetailsScreen: View {
                 diagnosticsBadge
 
                 if runtime.isConnected {
-                    connectedStatusRow
+                    if model.failure?.kind != .reconnect {
+                        connectedStatusRow
+                    }
                 } else {
                     connectPrompt
                 }
@@ -128,6 +130,7 @@ struct HaviCaptureDetailsScreen: View {
             }
             .buttonStyle(.bordered)
             .tint(HaviMarkupCanvas.accent)
+            .disabled(model.isSubmitting)
             .accessibilityLabel("Manage HAVI connection")
             .accessibilityIdentifier("havi-manage-connection")
         }
