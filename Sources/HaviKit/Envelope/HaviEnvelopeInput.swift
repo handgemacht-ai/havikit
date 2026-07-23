@@ -62,6 +62,11 @@ public struct HaviEnvelopeInput: Sendable {
     public var cssPath: String
     public var comment: String?
     public var priority: HaviPriority?
+    /// Applied workspace labels other than the built-in priority (which rides in
+    /// `priority`). Each becomes a `tagging` body in vocabulary/position order,
+    /// after the priority body. A `"priority"` entry here is ignored so it cannot
+    /// duplicate the `priority` field's body.
+    public var labels: [HaviLabel]
     public var deviceInfo: String?
     /// Console-error breadcrumbs (`x:role` `console-errors`), or nil when empty or
     /// excluded by the user's toggle.
@@ -83,6 +88,7 @@ public struct HaviEnvelopeInput: Sendable {
         cssPath: String,
         comment: String? = nil,
         priority: HaviPriority? = nil,
+        labels: [HaviLabel] = [],
         deviceInfo: String? = nil,
         consoleErrors: String? = nil,
         networkErrors: String? = nil,
@@ -99,6 +105,7 @@ public struct HaviEnvelopeInput: Sendable {
         self.cssPath = cssPath
         self.comment = comment
         self.priority = priority
+        self.labels = labels
         self.deviceInfo = deviceInfo
         self.consoleErrors = consoleErrors
         self.networkErrors = networkErrors
