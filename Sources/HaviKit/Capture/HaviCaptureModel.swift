@@ -20,12 +20,26 @@ final class HaviCaptureModel {
     }
 
     var comment: String = ""
-    var priority: HaviPriority
+    /// The selected priority value as a raw string, so a workspace's custom
+    /// priority vocabulary rides through unchanged. Seeded from the carried-in
+    /// `HaviPriority` default and reconciled onto the resolved option set once the
+    /// vocabulary loads (`loadLabelDefinitions`).
+    var prioritySelection: String
+    /// The workspace's `priority` choice definition, when the fetched vocabulary
+    /// carries one. When present it drives the priority control's options and the
+    /// emitted value; when nil the control falls back to the built-in
+    /// high/medium/low set (see `priorityOptions` / `showsPriority`).
+    private(set) var priorityDefinition: HaviLabelDefinition?
+    /// Whether a label vocabulary was successfully resolved (fetch returned a list,
+    /// even if empty). Distinguishes the offline fallback — where the built-in
+    /// high/medium/low priority is kept and emitted — from a resolved vocabulary
+    /// that archived/omitted priority, where no priority body is emitted.
+    private(set) var vocabularyResolved = false
     /// The workspace label vocabulary, resolved lazily when the details screen
     /// appears (`loadLabelDefinitions`). Empty until then, and stays empty on a
     /// fetch failure or an empty vocabulary, so the details screen shows only the
-    /// built-in priority control. Excludes the `priority` definition itself, which
-    /// the segmented control already renders.
+    /// priority control. Excludes the `priority` definition itself, which the
+    /// segmented priority control renders.
     private(set) var additionalLabelDefinitions: [HaviLabelDefinition] = []
     /// Applied values for `choice` / `value` labels, keyed by label key. A missing
     /// or empty entry means the label is unapplied.
@@ -53,8 +67,31 @@ final class HaviCaptureModel {
     init(session: HaviCaptureSession, runtime: HaviRuntime) {
         self.session = session
         self.runtime = runtime
-        self.priority = session.initialPriority
+        self.prioritySelection = session.initialPriority.rawValue
         self.diagnostics = HaviDiagnostics.split(HaviLogBuffer.shared.snapshot())
+    }
+
+    /// The priority options the segmented control renders. The workspace's
+    /// `priority` choice `allowed_values` when the vocabulary defines one;
+    /// otherwise the built-in high/medium/low set (offline fallback).
+    var priorityOptions: [String] {
+        priorityDefinition?.allowedValues ?? HaviPriority.allCases.map(\.rawValue)
+    }
+
+    /// Whether the priority control is shown and a priority `tagging` body is
+    /// emitted. True in the offline fallback (no resolved vocabulary — keep the
+    /// built-in priority) and when the resolved vocabulary carries a `priority`
+    /// choice. False only when a vocabulary resolved WITHOUT a priority definition
+    /// (archived/omitted), where emitting a hardcoded priority the backend no
+    /// longer accepts would 422 every capture.
+    var showsPriority: Bool {
+        !vocabularyResolved || priorityDefinition != nil
+    }
+
+    /// The priority value fed to the envelope input — the selection when priority
+    /// applies, nil when the workspace archived/omitted it.
+    var emittedPriority: String? {
+        showsPriority ? prioritySelection : nil
     }
 
     /// The drawing tool to restore when crop mode ends, so confirming/cancelling
@@ -195,32 +232,48 @@ final class HaviCaptureModel {
 
     // MARK: - Labels (bead havi-jj51)
 
-    /// Resolves the workspace label vocabulary once for this capture, dropping the
-    /// built-in `priority` definition (rendered by the segmented control). Called
-    /// when the details screen appears; a failure or empty vocabulary leaves the
-    /// additional-labels section empty, so capture never blocks on the fetch.
+    /// Resolves the workspace label vocabulary once for this capture. Splits out
+    /// the `priority` choice definition (which drives the segmented control) and
+    /// keeps every other definition for the additional-labels section. Called when
+    /// the details screen appears; a failure leaves the vocabulary unresolved so
+    /// the built-in priority stays and the fetch retries — capture never blocks.
     func loadLabelDefinitions() async {
-        guard additionalLabelDefinitions.isEmpty else { return }
+        guard !vocabularyResolved else { return }
         let token = runtime.tokenStore.accessToken ?? runtime.config.devToken
         let workspace = runtime.tokenStore.workspaceID ?? runtime.config.workspaceID
         guard let token, let workspace else { return }
         guard let definitions = await runtime.labelDefinitions(token: token, workspaceID: workspace) else {
             return
         }
+        vocabularyResolved = true
+        priorityDefinition = definitions.first { $0.key == "priority" && $0.kind == .choice }
         additionalLabelDefinitions = definitions.filter { $0.key != "priority" }
+        reconcilePrioritySelection()
+    }
+
+    /// Snaps the selected priority onto the resolved option set. When a workspace
+    /// defines custom priority values that do not include the carried-in default
+    /// (e.g. "medium" against P0/P1/P2), pick the middle option as the sensible
+    /// medium-equivalent; an already-valid selection is left untouched.
+    private func reconcilePrioritySelection() {
+        let options = priorityOptions
+        guard !options.isEmpty, !options.contains(prioritySelection) else { return }
+        prioritySelection = options[options.count / 2]
     }
 
     /// The applied non-priority labels, in vocabulary (position) order, fed to the
     /// envelope builder as `input.labels`. A `flag` applies with no value; a
-    /// `choice` / `value` applies only with a non-empty value.
+    /// `choice` / `value` applies only with a non-whitespace value, which is
+    /// trimmed before it rides into the envelope.
     func appliedLabels() -> [HaviLabel] {
         additionalLabelDefinitions.compactMap { definition in
             switch definition.kind {
             case .flag:
                 return labelFlags.contains(definition.key) ? HaviLabel(key: definition.key) : nil
             case .choice, .value:
-                guard let value = labelChoiceValues[definition.key], !value.isEmpty else { return nil }
-                return HaviLabel(key: definition.key, value: value)
+                let trimmed = (labelChoiceValues[definition.key] ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : HaviLabel(key: definition.key, value: trimmed)
             }
         }
     }
@@ -263,7 +316,7 @@ final class HaviCaptureModel {
             markupSvg: markupSvg,
             cssPath: HaviCaptureGeometry.cssPath(screen: session.screen, hint: hint),
             comment: comment,
-            priority: priority,
+            priority: emittedPriority,
             labels: appliedLabels(),
             deviceInfo: HaviDeviceInfo.current(orientation: session.orientation),
             consoleErrors: consoleErrors,

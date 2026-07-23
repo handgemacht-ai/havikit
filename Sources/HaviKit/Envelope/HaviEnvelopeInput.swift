@@ -61,7 +61,12 @@ public struct HaviEnvelopeInput: Sendable {
     /// Display-only `CssSelector` value: `"<screen> > <a11y-id path>"`.
     public var cssPath: String
     public var comment: String?
-    public var priority: HaviPriority?
+    /// The applied priority value, emitted as the `priority` `tagging` body's
+    /// value. A raw string (not the `HaviPriority` enum) so a workspace's custom
+    /// priority vocabulary (e.g. `P0`/`P1`/`P2`) rides through unchanged. Nil when
+    /// no priority applies (the workspace archived/omitted the priority label), in
+    /// which case no priority body is emitted.
+    public var priority: String?
     /// Applied workspace labels other than the built-in priority (which rides in
     /// `priority`). Each becomes a `tagging` body in vocabulary/position order,
     /// after the priority body. A `"priority"` entry here is ignored so it cannot
@@ -87,7 +92,7 @@ public struct HaviEnvelopeInput: Sendable {
         markupSvg: String? = nil,
         cssPath: String,
         comment: String? = nil,
-        priority: HaviPriority? = nil,
+        priority: String? = nil,
         labels: [HaviLabel] = [],
         deviceInfo: String? = nil,
         consoleErrors: String? = nil,
