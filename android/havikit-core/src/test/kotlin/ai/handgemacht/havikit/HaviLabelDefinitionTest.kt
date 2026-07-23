@@ -41,6 +41,21 @@ class HaviLabelDefinitionTest {
     }
 
     @Test
+    fun parsesFloatValuedPositionAsInteger() {
+        val json =
+            """
+            {"data":[
+              {"id":"1","key":"a","kind":"flag","position":2.0},
+              {"id":"2","key":"b","kind":"flag","position":1.0}
+            ]}
+            """.trimIndent()
+        val list = HaviLabelDefinition.parseList(json)!!
+        assertEquals(listOf("b", "a"), list.map { it.key })
+        assertEquals(1, list[0].position)
+        assertEquals(2, list[1].position)
+    }
+
+    @Test
     fun returnsNullWhenNotTheEnvelopeShape() {
         assertNull(HaviLabelDefinition.parseList("""{"nope":true}"""))
         assertNull(HaviLabelDefinition.parseList("not json"))

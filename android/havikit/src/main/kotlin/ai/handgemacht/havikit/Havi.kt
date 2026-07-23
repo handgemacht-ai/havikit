@@ -61,11 +61,19 @@ public object Havi {
         created.start()
     }
 
-    /** Programmatic capture of the resumed activity. No-op unless started. */
+    /**
+     * Programmatic capture of the resumed activity. No-op unless started. Capture reads
+     * View state (decor size, window location), so a call from a background thread hops
+     * to the main thread; a call already on the main thread runs inline.
+     */
     @JvmStatic
     @JvmOverloads
     public fun capture(screen: String? = null) {
-        runtime?.capture(screen)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            runtime?.capture(screen)
+        } else {
+            mainHandler.post { runtime?.capture(screen) }
+        }
     }
 
     /** Thread-free trigger (shake / long-press callbacks) — hops to the main thread. */

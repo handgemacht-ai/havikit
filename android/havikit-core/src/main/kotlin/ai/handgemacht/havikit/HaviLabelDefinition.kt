@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 
 /**
@@ -79,7 +80,7 @@ public data class HaviLabelDefinition(
                 allowedValues = allowedValues,
                 color = raw.string("color"),
                 description = raw.string("description"),
-                position = (raw["position"] as? JsonPrimitive)?.intOrNull ?: 0,
+                position = (raw["position"] as? JsonPrimitive)?.let { it.intOrNull ?: it.doubleOrNull?.toInt() } ?: 0,
             )
         }
 

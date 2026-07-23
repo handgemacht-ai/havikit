@@ -60,6 +60,8 @@ internal class HaviRuntime(
                 override fun onResumed(activity: Activity) = triggers.attachLongPress(activity)
 
                 override fun onPaused(activity: Activity) = triggers.detachLongPress()
+
+                override fun onDestroyed(activity: Activity) = captureHost.onHostDestroyed(activity)
             }
         app.registerActivityLifecycleCallbacks(activityTracker)
     }
