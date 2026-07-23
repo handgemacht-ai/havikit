@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["HaviKitModule"]
+  },
+  "android": {
+    "modules": ["ai.handgemacht.expo.HaviKitModule"]
+  }
+}
