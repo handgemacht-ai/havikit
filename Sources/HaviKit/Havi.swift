@@ -97,10 +97,24 @@ public enum Havi {
         throw HaviError.notImplemented
     }
 
+    /// Local sign-out: clears HaviKit's own stored credential on this device so the
+    /// sign-in flow can be re-run. Server-side token revocation is out of scope.
+    /// Routes through the live runtime's store when started, so it clears the same
+    /// credential the connect sheet's "Sign out" clears.
+    @MainActor
+    public static func disconnect() {
+        if let runtime {
+            runtime.tokenStore.clear()
+            runtime.pendingPriority = nil
+        } else {
+            HaviTokenStore().clear()
+        }
+    }
+
+    /// Backward-compatible alias for `disconnect()`.
     @MainActor
     public static func signOut() {
-        HaviTokenStore().clear()
-        runtime?.pendingPriority = nil
+        disconnect()
     }
 
     @MainActor
