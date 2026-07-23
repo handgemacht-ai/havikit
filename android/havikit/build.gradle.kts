@@ -1,15 +1,19 @@
 // Android library module — the native Kotlin/Compose HaviKit SDK surface. It hosts
 // the platform layer (Havi facade, PixelCopy snapshotter + redaction, capture
-// triggers, activity tracking, Compose integration) on top of the wire-contract
-// types in the pure-JVM :havikit-core it depends on; the capture sheet and connect
-// UI arrive in later stages. This module applies the Android Gradle Plugin, so it is
-// configured only when an Android SDK is available (see settings.gradle.kts) — locally
-// only :havikit-core builds/tests; CI (Android SDK present) compiles the AAR.
+// triggers, activity tracking, Compose integration, the capture/markup/connect UI,
+// and the submit flow) on top of the wire-contract types in the pure-JVM
+// :havikit-core it depends on. This module applies the Android Gradle Plugin, so it
+// is configured only when an Android SDK is available (see settings.gradle.kts) —
+// locally only :havikit-core builds/tests; CI (Android SDK present) compiles the AAR.
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
+    `maven-publish`
 }
+
+group = providers.gradleProperty("havikit.group").get()
+version = providers.gradleProperty("havikit.version").get()
 
 android {
     namespace = "ai.handgemacht.havikit"
@@ -38,6 +42,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
 }
 
 dependencies {
@@ -51,4 +61,33 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+}
+
+// The Android `release` software component is created late by AGP (after the
+// `android {}` block is evaluated), so the publication is wired in `afterEvaluate`
+// per the Android Gradle Plugin's documented pattern.
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                from(components["release"])
+                artifactId = "havikit"
+                pom {
+                    name.set("HaviKit")
+                    description.set("On-device HAVI mobile feedback SDK for Android.")
+                    url.set("https://github.com/handgemacht-ai/havikit")
+                }
+            }
+        }
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/handgemacht-ai/havikit")
+                credentials {
+                    username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+                    password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
+                }
+            }
+        }
+    }
 }
