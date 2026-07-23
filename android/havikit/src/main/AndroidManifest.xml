@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      The host app stamps the HAVI_* <meta-data> into ITS application node from a
+      debug/dev build variant, exactly like the iOS Info.plist keys. The library
+      ships no meta-data of its own, so a release host without them boots fully
+      inert (HaviConfig.fromManifest -> Inert). See HaviConfig in :havikit-core.
+    -->
+</manifest>
