@@ -1,9 +1,10 @@
-// Android library module — the native Kotlin/Compose HaviKit SDK surface lands
-// here in later stages (overlay host, PixelCopy snapshotter, capture sheet,
-// EncryptedSharedPreferences token store). Stage 1 keeps it a near-empty
-// placeholder that only wires the build: everything wire-contract lives in the
-// pure-JVM :havikit-core it depends on. This module is configured only when an
-// Android SDK is available (see settings.gradle.kts).
+// Android library module — the native Kotlin/Compose HaviKit SDK surface. It hosts
+// the platform layer (Havi facade, PixelCopy snapshotter + redaction, capture
+// triggers, activity tracking, Compose integration) on top of the wire-contract
+// types in the pure-JVM :havikit-core it depends on; the capture sheet and connect
+// UI arrive in later stages. This module applies the Android Gradle Plugin, so it is
+// configured only when an Android SDK is available (see settings.gradle.kts) — locally
+// only :havikit-core builds/tests; CI (Android SDK present) compiles the AAR.
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
