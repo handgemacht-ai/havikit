@@ -43,13 +43,13 @@ final class HaviCaptureModelStateTests: XCTestCase {
         // Screen 2 only touches comment/priority/toggles — Screen 1's state
         // must be untouched by that, since both screens share one model.
         model.comment = "Card overlaps the mic button"
-        model.priority = .high
+        model.prioritySelection = "high"
         model.includeNetworkErrors = false
 
         XCTAssertEqual(model.markup.marks.count, 1)
         XCTAssertEqual(model.crop.rect, cropAfterScreenOne)
         XCTAssertEqual(model.comment, "Card overlaps the mic button")
-        XCTAssertEqual(model.priority, .high)
+        XCTAssertEqual(model.prioritySelection, "high")
         XCTAssertFalse(model.includeNetworkErrors)
         XCTAssertTrue(model.includeConsoleErrors)
     }
@@ -275,7 +275,13 @@ final class HaviCaptureModelStateTests: XCTestCase {
 
         XCTAssertTrue(model.additionalLabelDefinitions.isEmpty)
         XCTAssertTrue(model.appliedLabels().isEmpty)
-        XCTAssertEqual(model.priority, .medium, "priority still works after a failed labels fetch")
+        XCTAssertFalse(model.vocabularyResolved, "a failed fetch leaves the vocabulary unresolved")
+        // Offline fallback: the built-in high/medium/low priority stays and emits.
+        XCTAssertTrue(model.showsPriority)
+        XCTAssertNil(model.priorityDefinition)
+        XCTAssertEqual(model.priorityOptions, ["high", "medium", "low"])
+        XCTAssertEqual(model.prioritySelection, "medium", "priority still works after a failed labels fetch")
+        XCTAssertEqual(model.emittedPriority, "medium")
     }
 
     /// The vocabulary loads without the built-in priority (the segmented control
@@ -304,6 +310,90 @@ final class HaviCaptureModelStateTests: XCTestCase {
 
         model.labelChoiceValues["area"] = ""
         XCTAssertTrue(model.appliedLabels().isEmpty)
+    }
+
+    /// A whitespace-only value is trimmed to nothing and applies no tagging body,
+    /// even though the raw stored string is non-empty (Fix 2).
+    func testWhitespaceOnlyValueLabelIsNotApplied() async {
+        let model = makeLabelModel(enqueue: (200, Self.labelVocabularyJSON))
+        await model.loadLabelDefinitions()
+
+        model.labelChoiceValues["area"] = "   \n\t"
+        XCTAssertTrue(model.appliedLabels().isEmpty)
+    }
+
+    /// A value with surrounding whitespace is trimmed before it rides into the
+    /// envelope (Fix 2) — the inner text is preserved.
+    func testValueLabelIsTrimmedBeforeEmission() async {
+        let model = makeLabelModel(enqueue: (200, Self.labelVocabularyJSON))
+        await model.loadLabelDefinitions()
+
+        model.labelChoiceValues["area"] = "  word card  "
+        XCTAssertEqual(model.appliedLabels(), [HaviLabel(key: "area", value: "word card")])
+    }
+
+    // MARK: - Priority driven by the workspace vocabulary (Fix 1)
+
+    private static let customPriorityJSON = """
+    {
+      "data": [
+        { "id": "id-priority", "key": "priority", "name": "Priority", "kind": "choice",
+          "allowed_values": ["P0", "P1", "P2"], "position": 0 },
+        { "id": "id-area", "key": "area", "name": "Area", "kind": "value",
+          "allowed_values": [], "position": 1 }
+      ]
+    }
+    """
+
+    private static let noPriorityJSON = """
+    {
+      "data": [
+        { "id": "id-area", "key": "area", "name": "Area", "kind": "value",
+          "allowed_values": [], "position": 0 }
+      ]
+    }
+    """
+
+    /// A workspace `priority` choice drives the control's options and the emitted
+    /// value. The carried-in "medium" default is not in the custom set, so it
+    /// reconciles to the middle option (P1). Selecting P0 emits P0.
+    func testCustomPriorityVocabularyDrivesControlAndEmission() async {
+        let model = makeLabelModel(enqueue: (200, Self.customPriorityJSON))
+        await model.loadLabelDefinitions()
+
+        XCTAssertTrue(model.showsPriority)
+        XCTAssertEqual(model.priorityOptions, ["P0", "P1", "P2"])
+        XCTAssertEqual(model.priorityDefinition?.key, "priority")
+        XCTAssertEqual(model.prioritySelection, "P1", "medium-equivalent default snaps to the middle option")
+        XCTAssertEqual(model.emittedPriority, "P1")
+        // priority is not double-rendered as an additional label
+        XCTAssertEqual(model.additionalLabelDefinitions.map(\.key), ["area"])
+
+        model.prioritySelection = "P0"
+        XCTAssertEqual(model.emittedPriority, "P0")
+    }
+
+    /// A resolved vocabulary that omits (or archived) priority hides the control
+    /// and emits NO priority body — the always-hardcoded body would otherwise 422.
+    func testArchivedPrioritySuppressesTheBody() async {
+        let model = makeLabelModel(enqueue: (200, Self.noPriorityJSON))
+        await model.loadLabelDefinitions()
+
+        XCTAssertTrue(model.vocabularyResolved)
+        XCTAssertNil(model.priorityDefinition)
+        XCTAssertFalse(model.showsPriority)
+        XCTAssertNil(model.emittedPriority, "no priority body when the workspace omits priority")
+    }
+
+    /// A workspace whose priority choice already contains the default keeps it
+    /// (no needless reconcile jump).
+    func testStandardPriorityVocabularyKeepsTheDefault() async {
+        let model = makeLabelModel(enqueue: (200, Self.labelVocabularyJSON))
+        await model.loadLabelDefinitions()
+
+        XCTAssertEqual(model.priorityOptions, ["high", "medium", "low"])
+        XCTAssertEqual(model.prioritySelection, "medium")
+        XCTAssertEqual(model.emittedPriority, "medium")
     }
 }
 #endif

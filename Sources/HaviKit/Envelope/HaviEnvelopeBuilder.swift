@@ -26,10 +26,10 @@ public enum HaviEnvelopeBuilder {
             ])
         }
 
-        if let priority = input.priority {
+        if let priority = input.priority?.trimmingCharacters(in: .whitespacesAndNewlines), !priority.isEmpty {
             body.append([
                 "type": "TextualBody",
-                "value": priority.rawValue,
+                "value": priority,
                 "purpose": "tagging",
                 "x:labelKey": "priority",
             ])

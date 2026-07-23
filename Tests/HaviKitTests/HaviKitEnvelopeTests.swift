@@ -140,7 +140,7 @@ final class HaviKitEnvelopeTests: XCTestCase {
     func testAppliedLabelsEmitTaggingBodiesAfterPriority() {
         var input = Self.minimalInput
         input.comment = "Overlaps the mic button"
-        input.priority = .high
+        input.priority = "high"
         input.labels = [
             HaviLabel(key: "area", value: "reader"),
             HaviLabel(key: "component", value: "WordCard"),
@@ -185,7 +185,7 @@ final class HaviKitEnvelopeTests: XCTestCase {
     /// the `priority` field is the single source for that key.
     func testPriorityKeyInLabelsIsNotDuplicated() {
         var input = Self.minimalInput
-        input.priority = .high
+        input.priority = "high"
         input.labels = [
             HaviLabel(key: "priority", value: "low"),
             HaviLabel(key: "area", value: "reader"),
@@ -203,6 +203,29 @@ final class HaviKitEnvelopeTests: XCTestCase {
     /// No labels and no priority → no tagging bodies at all (store-safe floor).
     func testNoLabelsEmitsNoTaggingBodies() {
         XCTAssertTrue(taggingBodies(Self.minimalInput).isEmpty)
+    }
+
+    /// A custom workspace priority value (e.g. `P1`) rides through the priority
+    /// body verbatim — the builder no longer assumes the high/medium/low enum.
+    func testCustomPriorityValueEmitsVerbatim() {
+        var input = Self.minimalInput
+        input.priority = "P1"
+
+        let tagging = taggingBodies(input)
+        XCTAssertEqual(tagging.map { $0["x:labelKey"] as? String }, ["priority"])
+        XCTAssertEqual(taggingValue(tagging, key: "priority"), "P1")
+    }
+
+    /// A nil or empty priority emits no priority body at all — the archived/omitted
+    /// case must not ship a `priority` tagging body the backend would reject.
+    func testNilOrEmptyPriorityEmitsNoPriorityBody() {
+        var nilInput = Self.minimalInput
+        nilInput.priority = nil
+        XCTAssertTrue(taggingBodies(nilInput).isEmpty)
+
+        var emptyInput = Self.minimalInput
+        emptyInput.priority = "   "
+        XCTAssertTrue(taggingBodies(emptyInput).isEmpty)
     }
 
     private func taggingBodies(_ input: HaviEnvelopeInput) -> [[String: Any]] {
@@ -238,7 +261,7 @@ final class HaviKitEnvelopeTests: XCTestCase {
         markupSvg: "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"612\" y=\"980\" width=\"470\" height=\"190\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\"/></svg>",
         cssPath: "ReaderScreen > wordCard.Haus",
         comment: "Word card overlaps the mic button in landscape",
-        priority: .high,
+        priority: "high",
         deviceInfo: "iPhone15,3 · iOS 17.5.1 · Lesewerkstatt Dev 1.4.0+812 · de_DE · landscapeLeft",
         appLogs: "[info] card start ref=Haus\n[warning] settle timeout phase=listen\n[error] RPC readAloudScore 503",
         dev: HaviDev(project: "lesewerkstatt", worktree: "reader-landscape-fix", branch: "reader-landscape-fix", commit: "a1b2c3d"),
@@ -254,7 +277,7 @@ final class HaviKitEnvelopeTests: XCTestCase {
         markupSvg: nil,
         cssPath: "SettingsScreen",
         comment: "Secret-shaped context keys must be scrubbed before send",
-        priority: .medium,
+        priority: "medium",
         dev: HaviDev(project: "lesewerkstatt", worktree: "redaction-audit", branch: "redaction-audit"),
         contexts: [
             "session": ["userId": "u-42", "authToken": "eyJhbGciOi", "note": "landscape"],
@@ -272,7 +295,7 @@ final class HaviKitEnvelopeTests: XCTestCase {
         markupSvg: nil,
         cssPath: "ReaderScreen",
         comment: "Scores never came back after the last card",
-        priority: .high,
+        priority: "high",
         deviceInfo: "iPhone15,3 · iOS 17.5.1 · Lesewerkstatt Dev 1.4.0+812 · de_DE · portrait",
         consoleErrors: "[error] Read-aloud scorer returned nil\n[error] Missing card asset: Haus",
         networkErrors: "POST https://havi.example/api/rpc/run 503 action=readAloudScore\nPOST https://havi.example/api/rpc/run 401 action=loadPlan",
@@ -288,7 +311,7 @@ final class HaviKitEnvelopeTests: XCTestCase {
         markupSvg: "<svg xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M 100 200 L 150 260 L 220 240\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><rect x=\"400\" y=\"900\" width=\"200\" height=\"150\" fill=\"none\" stroke=\"#0A84FF\" stroke-width=\"6\"/></svg>",
         cssPath: "ReaderScreen",
         comment: "Circled the glitchy card and boxed the button",
-        priority: .medium,
+        priority: "medium",
         dev: HaviDev(project: "lesewerkstatt", worktree: "markup-multi", branch: "markup-multi")
     )
 
@@ -300,7 +323,7 @@ final class HaviKitEnvelopeTests: XCTestCase {
         markupSvg: "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"120\" y=\"240\" width=\"160\" height=\"160\" fill=\"none\" stroke=\"#E8542F\" stroke-width=\"6\"/></svg>",
         cssPath: "ReaderScreen",
         comment: "Cropped to the card before flagging the glitch",
-        priority: .medium,
+        priority: "medium",
         dev: HaviDev(project: "lesewerkstatt", worktree: "capture-two-screen", branch: "capture-two-screen")
     )
 }

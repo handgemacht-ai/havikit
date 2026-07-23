@@ -37,7 +37,10 @@ struct HaviCaptureDetailsScreen: View {
                     connectPrompt
                 }
                 commentField
-                prioritySegments
+                if model.showsPriority {
+                    prioritySegments
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 if !model.additionalLabelDefinitions.isEmpty {
                     additionalLabelsSection
                 }
@@ -49,6 +52,7 @@ struct HaviCaptureDetailsScreen: View {
             .padding(20)
             .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: runtime.isConnected)
             .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.failure != nil)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.showsPriority)
             .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.additionalLabelDefinitions.isEmpty)
         }
         .task { await model.loadLabelDefinitions() }
@@ -185,25 +189,25 @@ struct HaviCaptureDetailsScreen: View {
         VStack(alignment: .leading, spacing: 8) {
             eyebrow("Priority")
             HStack(spacing: 4) {
-                segment(.high, label: "High")
-                segment(.medium, label: "Medium")
-                segment(.low, label: "Low")
+                ForEach(model.priorityOptions, id: \.self) { value in
+                    segment(value)
+                }
             }
             .padding(4)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color.primary.opacity(0.06))
             )
-            .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: model.priority)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: model.prioritySelection)
         }
     }
 
-    private func segment(_ value: HaviPriority, label: String) -> some View {
-        let selected = model.priority == value
+    private func segment(_ value: String) -> some View {
+        let selected = model.prioritySelection == value
         return Button {
-            model.priority = value
+            model.prioritySelection = value
         } label: {
-            Text(label)
+            Text(value.capitalized)
                 .font(.subheadline.weight(selected ? .semibold : .regular))
                 .foregroundStyle(selected ? Color.white : Color.primary.opacity(0.7))
                 .frame(maxWidth: .infinity, minHeight: 38)
@@ -219,7 +223,7 @@ struct HaviCaptureDetailsScreen: View {
         }
         .buttonStyle(.plain)
         .disabled(model.isSubmitting)
-        .accessibilityIdentifier("havi-priority-\(value.rawValue)")
+        .accessibilityIdentifier("havi-priority-\(value)")
     }
 
     // MARK: - Workspace labels (bead havi-jj51)
@@ -373,6 +377,8 @@ struct HaviCaptureDetailsScreen: View {
     private func valueControl(_ definition: HaviLabelDefinition) -> some View {
         TextField(definition.name, text: labelValueBinding(definition.key))
             .textFieldStyle(.roundedBorder)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
             .disabled(model.isSubmitting)
             .accessibilityIdentifier("havi-label-\(definition.key)-field")
     }
