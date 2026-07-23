@@ -20,6 +20,8 @@ struct HaviCaptureDetailsScreen: View {
 
     @FocusState private var commentFocused: Bool
     @Namespace private var prioritySlide
+    @Namespace private var labelSlide
+    @State private var labelsExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -36,6 +38,9 @@ struct HaviCaptureDetailsScreen: View {
                 }
                 commentField
                 prioritySegments
+                if !model.additionalLabelDefinitions.isEmpty {
+                    additionalLabelsSection
+                }
                 if let failure = model.failure {
                     failureBanner(failure)
                 }
@@ -44,7 +49,9 @@ struct HaviCaptureDetailsScreen: View {
             .padding(20)
             .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: runtime.isConnected)
             .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.failure != nil)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: model.additionalLabelDefinitions.isEmpty)
         }
+        .task { await model.loadLabelDefinitions() }
         .navigationTitle("Report to HAVI")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -213,6 +220,174 @@ struct HaviCaptureDetailsScreen: View {
         .buttonStyle(.plain)
         .disabled(model.isSubmitting)
         .accessibilityIdentifier("havi-priority-\(value.rawValue)")
+    }
+
+    // MARK: - Workspace labels (bead havi-jj51)
+
+    /// Everything past the built-in priority: the workspace's own label
+    /// vocabulary, rendered generically from `GET /api/label-definitions`. Kept in
+    /// a collapsed disclosure so the details screen stays as uncluttered as it is
+    /// today when a workspace defines no extra labels — the common case hides this
+    /// row entirely. An accent count badge keeps applied labels visible while
+    /// collapsed.
+    private var additionalLabelsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
+                    labelsExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    eyebrow("Labels")
+                    if appliedLabelCount > 0 {
+                        Text("\(appliedLabelCount)")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(HaviMarkupCanvas.accent))
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(labelsExpanded ? 0 : -90))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(model.isSubmitting)
+            .accessibilityIdentifier("havi-labels-disclosure")
+
+            if labelsExpanded {
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(model.additionalLabelDefinitions) { definition in
+                        labelControl(definition)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.primary.opacity(0.04))
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(.regularMaterial)
+                        )
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private var appliedLabelCount: Int { model.appliedLabels().count }
+
+    @ViewBuilder
+    private func labelControl(_ definition: HaviLabelDefinition) -> some View {
+        switch definition.kind {
+        case .choice:
+            VStack(alignment: .leading, spacing: 8) {
+                fieldCaption(definition.name)
+                choiceControl(definition)
+            }
+        case .value:
+            VStack(alignment: .leading, spacing: 8) {
+                fieldCaption(definition.name)
+                valueControl(definition)
+            }
+        case .flag:
+            flagControl(definition)
+        }
+    }
+
+    private func choiceControl(_ definition: HaviLabelDefinition) -> some View {
+        HStack(spacing: 4) {
+            ForEach(definition.allowedValues, id: \.self) { value in
+                choiceSegment(definition, value: value)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+        )
+        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: model.labelChoiceValues[definition.key])
+    }
+
+    private func choiceSegment(_ definition: HaviLabelDefinition, value: String) -> some View {
+        let selected = model.labelChoiceValues[definition.key] == value
+        return Button {
+            if selected {
+                model.labelChoiceValues[definition.key] = nil
+            } else {
+                model.labelChoiceValues[definition.key] = value
+            }
+        } label: {
+            Text(value.capitalized)
+                .font(.subheadline.weight(selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Color.white : Color.primary.opacity(0.7))
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .background(
+                    ZStack {
+                        if selected {
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(HaviMarkupCanvas.accent)
+                                .matchedGeometryEffect(id: "labelSel-\(definition.key)", in: labelSlide)
+                        }
+                    }
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isSubmitting)
+        .accessibilityIdentifier("havi-label-\(definition.key)-\(value)")
+    }
+
+    private func flagControl(_ definition: HaviLabelDefinition) -> some View {
+        let on = model.labelFlags.contains(definition.key)
+        return Button {
+            if on {
+                model.labelFlags.remove(definition.key)
+            } else {
+                model.labelFlags.insert(definition.key)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                    .font(.footnote)
+                Text(definition.name)
+                    .font(.subheadline.weight(on ? .semibold : .regular))
+            }
+            .foregroundStyle(on ? Color.white : Color.primary.opacity(0.8))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(on ? HaviMarkupCanvas.accent : Color.primary.opacity(0.06))
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isSubmitting)
+        .accessibilityIdentifier("havi-label-\(definition.key)")
+    }
+
+    private func valueControl(_ definition: HaviLabelDefinition) -> some View {
+        TextField(definition.name, text: labelValueBinding(definition.key))
+            .textFieldStyle(.roundedBorder)
+            .disabled(model.isSubmitting)
+            .accessibilityIdentifier("havi-label-\(definition.key)-field")
+    }
+
+    private func labelValueBinding(_ key: String) -> Binding<String> {
+        Binding(
+            get: { model.labelChoiceValues[key] ?? "" },
+            set: { model.labelChoiceValues[key] = $0.isEmpty ? nil : $0 }
+        )
+    }
+
+    private func fieldCaption(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
     }
 
     private func failureBanner(_ failure: HaviSubmitFailure) -> some View {

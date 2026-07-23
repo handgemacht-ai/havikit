@@ -21,6 +21,17 @@ final class HaviCaptureModel {
 
     var comment: String = ""
     var priority: HaviPriority
+    /// The workspace label vocabulary, resolved lazily when the details screen
+    /// appears (`loadLabelDefinitions`). Empty until then, and stays empty on a
+    /// fetch failure or an empty vocabulary, so the details screen shows only the
+    /// built-in priority control. Excludes the `priority` definition itself, which
+    /// the segmented control already renders.
+    private(set) var additionalLabelDefinitions: [HaviLabelDefinition] = []
+    /// Applied values for `choice` / `value` labels, keyed by label key. A missing
+    /// or empty entry means the label is unapplied.
+    var labelChoiceValues: [String: String] = [:]
+    /// Applied `flag` labels (presence == on).
+    var labelFlags: Set<String> = []
     /// The multi-mark markup editor (bead havi-6953). Owned here so `submit`
     /// serializes its marks into the envelope and burns its blur regions into the
     /// pixels before encoding.
@@ -182,6 +193,38 @@ final class HaviCaptureModel {
         Task { await submit() }
     }
 
+    // MARK: - Labels (bead havi-jj51)
+
+    /// Resolves the workspace label vocabulary once for this capture, dropping the
+    /// built-in `priority` definition (rendered by the segmented control). Called
+    /// when the details screen appears; a failure or empty vocabulary leaves the
+    /// additional-labels section empty, so capture never blocks on the fetch.
+    func loadLabelDefinitions() async {
+        guard additionalLabelDefinitions.isEmpty else { return }
+        let token = runtime.tokenStore.accessToken ?? runtime.config.devToken
+        let workspace = runtime.tokenStore.workspaceID ?? runtime.config.workspaceID
+        guard let token, let workspace else { return }
+        guard let definitions = await runtime.labelDefinitions(token: token, workspaceID: workspace) else {
+            return
+        }
+        additionalLabelDefinitions = definitions.filter { $0.key != "priority" }
+    }
+
+    /// The applied non-priority labels, in vocabulary (position) order, fed to the
+    /// envelope builder as `input.labels`. A `flag` applies with no value; a
+    /// `choice` / `value` applies only with a non-empty value.
+    func appliedLabels() -> [HaviLabel] {
+        additionalLabelDefinitions.compactMap { definition in
+            switch definition.kind {
+            case .flag:
+                return labelFlags.contains(definition.key) ? HaviLabel(key: definition.key) : nil
+            case .choice, .value:
+                guard let value = labelChoiceValues[definition.key], !value.isEmpty else { return nil }
+                return HaviLabel(key: definition.key, value: value)
+            }
+        }
+    }
+
     // MARK: - Envelope input
 
     private func buildInput(marks: [HaviMark], cropRect: CGRect, imageSize: HaviSize, config: HaviConfig) -> HaviEnvelopeInput {
@@ -221,6 +264,7 @@ final class HaviCaptureModel {
             cssPath: HaviCaptureGeometry.cssPath(screen: session.screen, hint: hint),
             comment: comment,
             priority: priority,
+            labels: appliedLabels(),
             deviceInfo: HaviDeviceInfo.current(orientation: session.orientation),
             consoleErrors: consoleErrors,
             networkErrors: networkErrors,
