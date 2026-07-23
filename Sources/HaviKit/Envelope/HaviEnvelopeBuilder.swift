@@ -5,7 +5,8 @@ import Foundation
 /// MCP unchanged. The backend stamps `id` / `created` / `modified` / `creator`
 /// and the `Image` body's `id`, so this omits them.
 ///
-/// Body order: comment → priority `tagging` → `describing` bodies
+/// Body order: comment → priority `tagging` → other label `tagging` bodies →
+/// `describing` bodies
 /// (`device-info` → `console-errors` → `network-errors` → `app-logs`) →
 /// `{ "type": "Image" }` last. `console-errors` / `network-errors` mirror the
 /// browser extension's shape (`annotation-envelope.js`). Selector order:
@@ -32,6 +33,18 @@ public enum HaviEnvelopeBuilder {
                 "purpose": "tagging",
                 "x:labelKey": "priority",
             ])
+        }
+
+        for label in input.labels where label.key != "priority" {
+            var taggingBody: [String: Any] = [
+                "type": "TextualBody",
+                "purpose": "tagging",
+                "x:labelKey": label.key,
+            ]
+            if let value = label.value {
+                taggingBody["value"] = value
+            }
+            body.append(taggingBody)
         }
 
         if let deviceInfo = nonEmpty(input.deviceInfo) {

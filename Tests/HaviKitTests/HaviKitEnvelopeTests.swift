@@ -133,6 +133,87 @@ final class HaviKitEnvelopeTests: XCTestCase {
         XCTAssertEqual(roles, ["device-info", "console-errors", "app-logs"])
     }
 
+    // MARK: - Generic workspace labels (bead havi-jj51)
+
+    /// Every applied label becomes its own `tagging` body, in input order, right
+    /// after the priority body — proving mobile is no longer priority-only.
+    func testAppliedLabelsEmitTaggingBodiesAfterPriority() {
+        var input = Self.minimalInput
+        input.comment = "Overlaps the mic button"
+        input.priority = .high
+        input.labels = [
+            HaviLabel(key: "area", value: "reader"),
+            HaviLabel(key: "component", value: "WordCard"),
+            HaviLabel(key: "blocker"),
+        ]
+
+        let tagging = taggingBodies(input)
+        XCTAssertEqual(
+            tagging.map { $0["x:labelKey"] as? String },
+            ["priority", "area", "component", "blocker"]
+        )
+        XCTAssertEqual(taggingValue(tagging, key: "priority"), "high")
+        XCTAssertEqual(taggingValue(tagging, key: "area"), "reader")
+        XCTAssertEqual(taggingValue(tagging, key: "component"), "WordCard")
+        XCTAssertTrue(tagging.allSatisfy { $0["purpose"] as? String == "tagging" })
+        XCTAssertTrue(tagging.allSatisfy { $0["type"] as? String == "TextualBody" })
+    }
+
+    /// A `flag` label (nil value) emits a tagging body with NO `value` field,
+    /// matching the extension's shape.
+    func testFlagLabelOmitsValueField() {
+        var input = Self.minimalInput
+        input.labels = [HaviLabel(key: "regression")]
+
+        let flag = taggingBodies(input).first { $0["x:labelKey"] as? String == "regression" }
+        XCTAssertNotNil(flag)
+        XCTAssertNil(flag?["value"])
+        XCTAssertEqual(flag?["purpose"] as? String, "tagging")
+    }
+
+    /// Labels apply with no priority set — the priority body is not synthesized.
+    func testLabelsApplyWithoutPriority() {
+        var input = Self.minimalInput
+        input.priority = nil
+        input.labels = [HaviLabel(key: "area", value: "reader")]
+
+        let tagging = taggingBodies(input)
+        XCTAssertEqual(tagging.map { $0["x:labelKey"] as? String }, ["area"])
+    }
+
+    /// A stray `priority` entry in `labels` never duplicates the priority body —
+    /// the `priority` field is the single source for that key.
+    func testPriorityKeyInLabelsIsNotDuplicated() {
+        var input = Self.minimalInput
+        input.priority = .high
+        input.labels = [
+            HaviLabel(key: "priority", value: "low"),
+            HaviLabel(key: "area", value: "reader"),
+        ]
+
+        let priorityBodies = taggingBodies(input).filter { $0["x:labelKey"] as? String == "priority" }
+        XCTAssertEqual(priorityBodies.count, 1)
+        XCTAssertEqual(priorityBodies.first?["value"] as? String, "high")
+        XCTAssertEqual(
+            taggingBodies(input).map { $0["x:labelKey"] as? String },
+            ["priority", "area"]
+        )
+    }
+
+    /// No labels and no priority → no tagging bodies at all (store-safe floor).
+    func testNoLabelsEmitsNoTaggingBodies() {
+        XCTAssertTrue(taggingBodies(Self.minimalInput).isEmpty)
+    }
+
+    private func taggingBodies(_ input: HaviEnvelopeInput) -> [[String: Any]] {
+        let body = HaviEnvelopeBuilder.build(input)["body"] as? [[String: Any]] ?? []
+        return body.filter { $0["purpose"] as? String == "tagging" }
+    }
+
+    private func taggingValue(_ bodies: [[String: Any]], key: String) -> String? {
+        bodies.first { $0["x:labelKey"] as? String == key }?["value"] as? String
+    }
+
     private func target(_ input: HaviEnvelopeInput) -> [String: Any] {
         (HaviEnvelopeBuilder.build(input)["target"] as? [String: Any]) ?? [:]
     }
