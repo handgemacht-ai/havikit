@@ -131,6 +131,7 @@ Optional annotations you can add anywhere in the view tree / app code:
 - `Havi.log(_:level:category:)`, `Havi.logNetworkError(_:)` — breadcrumbs that
   surface as the annotation's console/network describing bodies.
 - `Havi.capture(screen:)` — trigger capture programmatically.
+- `Havi.disconnect()` — sign out, clearing this device's stored HAVI credential.
 
 ### Screen names (recommended)
 
