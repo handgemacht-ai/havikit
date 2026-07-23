@@ -13,9 +13,9 @@ import android.os.Looper
  * even before [start] (and when the SDK ships inert), matching the iOS "still records
  * when inert" contract.
  *
- * This stage wires the capture subsystem (freeze + redact + triggers + activity
- * tracking); the connect/auth surface (`signIn`, `disconnect`, `authState`) and the
- * capture sheet UI land in later stages on top of the same runtime.
+ * The runtime wires the capture subsystem (freeze + redact + triggers + activity
+ * tracking) together with the credential store, the uploader/connect/label
+ * services, and the Activity-scoped capture sheet + connect UI.
  */
 public object Havi {
     internal val logBuffer: HaviLogBuffer = HaviLogBuffer()
@@ -25,6 +25,9 @@ public object Havi {
 
     @Volatile
     private var runtime: HaviRuntime? = null
+
+    @Volatile
+    private var appContext: Context? = null
 
     @Volatile
     private var pendingPriority: HaviPriority? = null
@@ -48,8 +51,11 @@ public object Havi {
         if (!config.isEnabled) return
         if (runtime != null) return
 
-        val application = context.applicationContext as? Application
-        val created = HaviRuntime(application, config, logBuffer, contextStore)
+        val appCtx = context.applicationContext
+        appContext = appCtx
+        HaviAndroidDeviceInfo.configure(appCtx)
+        val application = appCtx as? Application
+        val created = HaviRuntime(application, config, appCtx, logBuffer, contextStore)
         runtime = created
         isEnabled = true
         created.start()
@@ -122,6 +128,57 @@ public object Havi {
         pendingPriority = priority
     }
 
+    /**
+     * Dev manual-paste: writes a bearer token + workspace id to HaviKit's own
+     * credential store, overriding the stamped `HAVI_DEV_TOKEN` / `HAVI_WORKSPACE_ID`.
+     */
+    @JvmStatic
+    public fun signIn(
+        token: String,
+        workspaceId: String,
+    ) {
+        resolveStore()?.signIn(token, workspaceId)
+    }
+
+    /** Reserved device-code pairing entry point (v1.1); currently always throws. */
+    @JvmStatic
+    public suspend fun beginDeviceAuthorization(): HaviDeviceFlow = throw HaviException.NotImplemented
+
+    /** Local sign-out: clears this device's stored HAVI credential and the seeded priority. */
+    @JvmStatic
+    public fun disconnect() {
+        resolveStore()?.clear()
+        pendingPriority = null
+    }
+
+    /** Backward-compatible alias of [disconnect]. */
+    @JvmStatic
+    public fun signOut(): Unit = disconnect()
+
+    /** Resolved authentication state, mirroring iOS `Havi.authState`. */
+    @JvmStatic
+    public val authState: HaviAuthState
+        get() = runtime?.authState ?: HaviAuthState.Unconfigured
+
     /** The priority seeded via [setPriority], consumed when the capture sheet opens. */
     internal fun consumePendingPriority(): HaviPriority? = pendingPriority
+
+    internal fun clearPendingPriority() {
+        pendingPriority = null
+    }
+
+    internal fun clearLogBuffer() {
+        logBuffer.clear()
+    }
+
+    /**
+     * HaviKit's own credential store: the live runtime's when started, else a fresh
+     * store over the last known application context (local sign-out from settings
+     * before a capture). Null only when the SDK never saw a context.
+     */
+    private fun resolveStore(): HaviTokenStore? {
+        runtime?.let { return it.tokenStore }
+        val ctx = appContext ?: return null
+        return HaviTokenStore(HaviPrefsCredentialBacking(ctx))
+    }
 }
