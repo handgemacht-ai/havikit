@@ -210,5 +210,100 @@ final class HaviCaptureModelStateTests: XCTestCase {
         XCTAssertEqual(model.markup.marks.count, 1, "a failed submit must not drop marks")
         XCTAssertTrue(model.crop.isCropped, "a failed submit must not reset the crop")
     }
+
+    // MARK: - Workspace labels (bead havi-jj51)
+
+    private static let labelVocabularyJSON = """
+    {
+      "data": [
+        { "id": "id-priority", "key": "priority", "name": "Priority", "kind": "choice",
+          "allowed_values": ["high", "medium", "low"], "position": 0 },
+        { "id": "id-area", "key": "area", "name": "Area", "kind": "value",
+          "allowed_values": [], "position": 1 },
+        { "id": "id-flag", "key": "regression", "name": "Regression", "kind": "flag",
+          "allowed_values": [], "position": 2 }
+      ]
+    }
+    """
+
+    private func makeLabelModel(enqueue: (status: Int, json: String)?) -> HaviCaptureModel {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        let urlSession = URLSession(configuration: configuration)
+        StubURLProtocol.reset()
+        if let enqueue { StubURLProtocol.enqueue(status: enqueue.status, json: enqueue.json) }
+
+        let config = HaviConfig(
+            isEnabled: true,
+            baseURL: URL(string: "https://havi.example"),
+            workspaceID: nil,
+            project: nil,
+            worktree: nil,
+            branch: nil,
+            commit: nil,
+            imageFormat: .png,
+            devToken: nil,
+            redaction: HaviRedactionPolicy()
+        )
+        let store = HaviTokenStore(backing: HaviInMemoryCredentialBacking())
+        store.signIn(token: "tok", workspaceID: "ws")
+        let runtime = HaviRuntime(
+            config: config,
+            tokenStore: store,
+            labelService: HaviLabelService(config: config, session: urlSession)
+        )
+
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 40)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 20, height: 40))
+        }
+        let session = HaviCaptureSession(
+            image: image,
+            a11yFrames: [],
+            orientation: "portrait",
+            screen: "ReaderScreen",
+            initialPriority: .medium
+        )
+        return HaviCaptureModel(session: session, runtime: runtime)
+    }
+
+    /// A failed label fetch degrades to exactly today's screen: no additional
+    /// labels, no applied labels, priority untouched — capture is never blocked.
+    func testLabelFetchFailureFallsBackToPriorityOnly() async {
+        let model = makeLabelModel(enqueue: (500, #"{"error":{"code":"server_error"}}"#))
+        await model.loadLabelDefinitions()
+
+        XCTAssertTrue(model.additionalLabelDefinitions.isEmpty)
+        XCTAssertTrue(model.appliedLabels().isEmpty)
+        XCTAssertEqual(model.priority, .medium, "priority still works after a failed labels fetch")
+    }
+
+    /// The vocabulary loads without the built-in priority (the segmented control
+    /// already owns it), keeps position order, and applied selections become the
+    /// exact `HaviLabel` list fed to the envelope.
+    func testVocabularyLoadsAndSelectionsBecomeAppliedLabels() async {
+        let model = makeLabelModel(enqueue: (200, Self.labelVocabularyJSON))
+        await model.loadLabelDefinitions()
+
+        XCTAssertEqual(model.additionalLabelDefinitions.map(\.key), ["area", "regression"])
+        XCTAssertTrue(model.appliedLabels().isEmpty, "nothing applied until the user selects")
+
+        model.labelChoiceValues["area"] = "reader"
+        model.labelFlags.insert("regression")
+
+        XCTAssertEqual(
+            model.appliedLabels(),
+            [HaviLabel(key: "area", value: "reader"), HaviLabel(key: "regression")]
+        )
+    }
+
+    /// An empty value string leaves the label unapplied (no empty tagging body).
+    func testEmptyValueLabelIsNotApplied() async {
+        let model = makeLabelModel(enqueue: (200, Self.labelVocabularyJSON))
+        await model.loadLabelDefinitions()
+
+        model.labelChoiceValues["area"] = ""
+        XCTAssertTrue(model.appliedLabels().isEmpty)
+    }
 }
 #endif
