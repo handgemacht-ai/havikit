@@ -4,10 +4,10 @@ import type { HaviAuthState, HaviConfig, HaviLogLevel, HaviPriority } from './Ha
 import HaviKitModule from './HaviKitModule';
 
 /**
- * Starts (or re-arms) the SDK from a JS config. Idempotent natively. Rejects
- * when `config.enabled` is set without a valid `baseUrl` — the catchable
- * counterpart of HaviKit's native fail-fast, rather than a hard runtime crash.
- * On web this resolves to a no-op.
+ * Starts the SDK from a JS config. The first call wins: once the native runtime
+ * is up, later calls are ignored, so a changed config needs an app restart.
+ * Rejects when `config.enabled` is set without a valid `baseUrl`, where the
+ * native readers resolve to their inert config. On web this resolves to a no-op.
  */
 export function start(config: HaviConfig): Promise<void> {
   return HaviKitModule.start(config);

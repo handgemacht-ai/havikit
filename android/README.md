@@ -42,10 +42,11 @@ own only for a headless (non-UI) integration.
 ## Configure — `AndroidManifest.xml` `<meta-data>`
 
 `HaviConfig.fromManifest(context)` reads these keys from the `<application>` node.
-`HAVI_ENABLED` unset → the SDK is inert; set but `HAVI_BASE_URL` missing/invalid →
-`IllegalStateException` at start (fail-fast). Every other key is optional; an empty
-value is treated as absent. Stamp them from a `debug`/`dev` variant so release
-ships inert.
+`HAVI_ENABLED` unset → the SDK is inert; set but `HAVI_BASE_URL` missing or not an
+absolute `http`/`https` URL with a host → one `Log.e` line and the same inert
+config, so a stamping mistake never takes the host app down. Every other key is
+optional; an empty value is treated as absent. Stamp them from a `debug`/`dev`
+variant so release ships inert.
 
 ```xml
 <application …>

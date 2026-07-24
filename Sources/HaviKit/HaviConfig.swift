@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Resolved SDK configuration, captured immutably at `Havi.start` (design §1,
 /// §6). Mirrors `SentryReporting`'s DSN-gated activation: when `isEnabled` is
@@ -55,37 +56,113 @@ public struct HaviConfig: Sendable {
         redaction: HaviRedactionPolicy()
     )
 
-    /// Reads the stamped `HAVI_*` Info.plist keys (design §6). `HAVI_ENABLED`
-    /// unset → `.inert`. `HAVI_ENABLED` set but `HAVI_BASE_URL`
-    /// missing/invalid → `fatalError` (fail-fast, mirroring `Config.apiBaseURL`).
-    /// Every other key is optional and simply absent when empty — the same
-    /// "omit, never empty-string" discipline the stamper enforces end to end.
+    private static let infoKeys = [
+        "HAVI_ENABLED",
+        "HAVI_BASE_URL",
+        "HAVI_WORKSPACE_ID",
+        "HAVI_PROJECT",
+        "HAVI_WORKTREE",
+        "HAVI_BRANCH",
+        "HAVI_COMMIT",
+        "HAVI_IMAGE_FORMAT",
+        "HAVI_DEV_TOKEN",
+    ]
+
+    /// Reads the stamped `HAVI_*` Info.plist keys (design §6) and resolves them
+    /// through `fromInfoValues`. A key stamped as a plist boolean (rather than
+    /// the documented `YES` string) is read through its string form, so both
+    /// spellings of `HAVI_ENABLED` resolve — parity with the Android manifest
+    /// reader.
     public static func fromBundle(_ bundle: Bundle = .main) -> HaviConfig {
-        guard infoValue("HAVI_ENABLED", bundle)?.uppercased() == "YES" else {
+        var values: [String: String] = [:]
+        for key in infoKeys {
+            if let value = infoString(key, bundle) {
+                values[key] = value
+            }
+        }
+        return fromInfoValues(values)
+    }
+
+    /// The pure resolver behind `fromBundle`, twin of Android
+    /// `HaviConfig.fromMetaData`:
+    ///  - `HAVI_ENABLED` not `YES`/`true` → `.inert` (zero cost).
+    ///  - `HAVI_ENABLED` set but `HAVI_BASE_URL` missing/invalid → one
+    ///    fault-level log line and `.inert`. A misconfigured SDK stays out of the
+    ///    way; it never takes the host app down.
+    ///  - every other key optional; an empty string is treated as absent
+    ///    ("omit, never empty-string").
+    public static func fromInfoValues(_ values: [String: String]) -> HaviConfig {
+        guard isEnabledValue(values["HAVI_ENABLED"]) else { return .inert }
+
+        guard let raw = value(values, "HAVI_BASE_URL"), let url = validBaseURL(raw) else {
+            logMisconfiguredBaseURL()
             return .inert
         }
-        guard let raw = infoValue("HAVI_BASE_URL", bundle), let url = URL(string: raw) else {
-            fatalError("HAVI_ENABLED is set but HAVI_BASE_URL is missing or invalid in Info.plist")
-        }
-        let format = HaviImageFormat(rawValue: (infoValue("HAVI_IMAGE_FORMAT", bundle) ?? "png").lowercased()) ?? .png
+
+        let rawFormat = value(values, "HAVI_IMAGE_FORMAT") ?? "png"
+        let format = HaviImageFormat(
+            rawValue: rawFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        ) ?? .png
         return HaviConfig(
             isEnabled: true,
             baseURL: url,
-            workspaceID: infoValue("HAVI_WORKSPACE_ID", bundle),
-            project: infoValue("HAVI_PROJECT", bundle),
-            worktree: infoValue("HAVI_WORKTREE", bundle),
-            branch: infoValue("HAVI_BRANCH", bundle),
-            commit: infoValue("HAVI_COMMIT", bundle),
+            workspaceID: value(values, "HAVI_WORKSPACE_ID"),
+            project: value(values, "HAVI_PROJECT"),
+            worktree: value(values, "HAVI_WORKTREE"),
+            branch: value(values, "HAVI_BRANCH"),
+            commit: value(values, "HAVI_COMMIT"),
             imageFormat: format,
-            devToken: infoValue("HAVI_DEV_TOKEN", bundle),
+            devToken: value(values, "HAVI_DEV_TOKEN"),
             redaction: HaviRedactionPolicy()
         )
     }
 
-    private static func infoValue(_ key: String, _ bundle: Bundle) -> String? {
-        guard let value = bundle.object(forInfoDictionaryKey: key) as? String, !value.isEmpty else {
+    /// A base URL is usable only as an absolute `http`/`https` URL with a host
+    /// (parity with Android `HaviConfig.validBaseUrlOrNull`). A schemeless string
+    /// such as `havi.test`, a `file:` URL, or a scheme with no host is rejected.
+    public static func validBaseURL(_ raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host, !host.isEmpty
+        else { return nil }
+        return url
+    }
+
+    /// True when a stamped `HAVI_ENABLED` arms the SDK: `YES` or `true`, trimmed
+    /// and case-insensitive (parity with Android).
+    private static func isEnabledValue(_ raw: String?) -> Bool {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        return trimmed.caseInsensitiveCompare("YES") == .orderedSame
+            || trimmed.caseInsensitiveCompare("true") == .orderedSame
+    }
+
+    private static func logMisconfiguredBaseURL() {
+        Logger(subsystem: "ai.handgemacht.havikit", category: "config")
+            .fault(
+                "HaviKit is enabled but HAVI_BASE_URL is missing or invalid (an absolute http/https URL is required) — the SDK stays inert."
+            )
+    }
+
+    /// Missing key OR empty string both resolve to nil (omit-never-empty).
+    private static func value(_ values: [String: String], _ key: String) -> String? {
+        guard let raw = values[key], !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    /// Info.plist values arrive as strings or, when stamped as a plist boolean,
+    /// as a bridged `Bool`; anything else is ignored.
+    private static func infoString(_ key: String, _ bundle: Bundle) -> String? {
+        guard let raw = bundle.object(forInfoDictionaryKey: key) else { return nil }
+        switch raw {
+        case let text as String:
+            return text
+        case let flag as Bool:
+            return flag ? "true" : "false"
+        default:
             return nil
         }
-        return value
     }
 }

@@ -78,9 +78,10 @@ Three touch points in the host app.
 ### 1. Stamp the `HAVI_*` config into `Info.plist`
 
 `HaviConfig.fromBundle()` reads these keys. `HAVI_ENABLED` unset → the SDK is
-inert; set (`YES`) but `HAVI_BASE_URL` missing/invalid → `fatalError` (fail
-fast). Every other key is optional. With XcodeGen you inject them from an
-`.xcconfig`:
+inert; set (`YES`/`true`, or a plist boolean) but `HAVI_BASE_URL` missing or not
+an absolute `http`/`https` URL with a host → one fault-level log line and the
+same inert config, so a stamping mistake never takes the host app down. Every
+other key is optional. With XcodeGen you inject them from an `.xcconfig`:
 
 | Info.plist key      | Meaning                                         |
 |---------------------|-------------------------------------------------|

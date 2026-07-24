@@ -10,7 +10,7 @@ import java.net.URI
  * The pure-JVM core keeps the reader that turns the stamped `HAVI_*` values into a
  * config ([fromMetaData]); the Android module's `HaviConfig.fromManifest(context)`
  * simply reads the `<meta-data>` bundle into a map and delegates here, so the
- * inert / fail-fast / omit-empty semantics live in one tested place.
+ * inert / misconfiguration / omit-empty semantics live in one tested place.
  */
 public data class HaviConfig(
     val isEnabled: Boolean,
@@ -44,9 +44,10 @@ public data class HaviConfig(
          * Reads the stamped `HAVI_*` keys, mirroring iOS `HaviConfig.fromBundle`
          * (wire spec §14):
          *  - `HAVI_ENABLED` not `YES`/`true` -> [Inert] (zero cost).
-         *  - `HAVI_ENABLED` set but `HAVI_BASE_URL` missing/invalid -> throws
-         *    [IllegalStateException] (fail-fast; the Android intent equivalent of
-         *    the iOS `fatalError`).
+         *  - `HAVI_ENABLED` set but `HAVI_BASE_URL` missing/invalid -> [Inert]. The
+         *    Android reader (`HaviConfig.fromManifest`) logs one error line for it;
+         *    a misconfigured SDK stays out of the way instead of taking the host
+         *    app down.
          *  - every other key optional; an empty string is treated as absent
          *    ("omit, never empty-string").
          */
@@ -54,12 +55,9 @@ public data class HaviConfig(
             meta: Map<String, String?>,
             redaction: HaviRedactionPolicy = HaviRedactionPolicy(),
         ): HaviConfig {
-            if (!isYes(value(meta, "HAVI_ENABLED"))) return Inert
+            if (!isEnabledValue(value(meta, "HAVI_ENABLED"))) return Inert
 
-            val raw = value(meta, "HAVI_BASE_URL")
-                ?: error("HAVI_ENABLED is set but HAVI_BASE_URL is missing or invalid")
-            val url = validBaseUrlOrNull(raw)
-                ?: error("HAVI_ENABLED is set but HAVI_BASE_URL is missing or invalid")
+            val url = value(meta, "HAVI_BASE_URL")?.let { validBaseUrlOrNull(it) } ?: return Inert
 
             return HaviConfig(
                 isEnabled = true,
@@ -81,7 +79,8 @@ public data class HaviConfig(
             key: String,
         ): String? = meta[key]?.takeIf { it.isNotEmpty() }
 
-        private fun isYes(raw: String?): Boolean =
+        /** True when a stamped `HAVI_ENABLED` arms the SDK: `YES`/`true`, trimmed, case-insensitive. */
+        public fun isEnabledValue(raw: String?): Boolean =
             raw?.trim()?.let { it.equals("YES", ignoreCase = true) || it.equals("true", ignoreCase = true) } == true
 
         /** A base URL is valid only when it is an absolute http/https URL with a host. */
