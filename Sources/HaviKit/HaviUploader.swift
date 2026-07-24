@@ -9,26 +9,33 @@ import FoundationNetworking
 /// in-memory retry on a transient failure, then the outcome is surfaced to the
 /// capture sheet. Server-driven re-encode fallbacks (`unsupported_media_type` →
 /// PNG, `payload_too_large` → 1024 px) run transparently once each.
+///
+/// `tokenStore`, when supplied, is cleared the moment the server rejects the
+/// credential: the reconnect prompt can be dismissed, and a revoked token left in
+/// the Keychain would 401 every later capture forever.
 public actor HaviUploader {
     private let config: HaviConfig
     private let session: URLSession
     private let retryDelayNanoseconds: UInt64
+    private let tokenStore: HaviTokenStore?
 
-    init(config: HaviConfig) {
+    init(config: HaviConfig, tokenStore: HaviTokenStore? = nil) {
         self.config = config
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 60
         self.session = URLSession(configuration: configuration)
         self.retryDelayNanoseconds = 1_500_000_000
+        self.tokenStore = tokenStore
     }
 
     /// Test seam: inject a session backed by a stub `URLProtocol` and a zero
     /// retry delay so the transport tests do not touch the network or sleep.
-    init(config: HaviConfig, session: URLSession, retryDelayNanoseconds: UInt64) {
+    init(config: HaviConfig, session: URLSession, retryDelayNanoseconds: UInt64, tokenStore: HaviTokenStore? = nil) {
         self.config = config
         self.session = session
         self.retryDelayNanoseconds = retryDelayNanoseconds
+        self.tokenStore = tokenStore
     }
 
     public func submit(_ pending: PendingAnnotation) async -> HaviSubmitResult {
@@ -55,7 +62,8 @@ public actor HaviUploader {
                 annotationJSON: pending.annotationJSON,
                 imageData: imageData,
                 format: format,
-                siblings: pending.siblings
+                siblings: pending.siblings,
+                idempotencyKey: pending.idempotencyKey
             )
 
             switch classification {
@@ -92,6 +100,7 @@ public actor HaviUploader {
                     return .failure(.init(userMessage: mapped.userMessage, kind: .retry, code: mapped.code))
 
                 case .reauth:
+                    tokenStore?.clear()
                     return .failure(.init(userMessage: mapped.userMessage, kind: .reconnect, code: mapped.code))
 
                 case .terminal:
@@ -108,7 +117,8 @@ public actor HaviUploader {
         annotationJSON: String,
         imageData: Data?,
         format: HaviImageFormat,
-        siblings: [String: String]
+        siblings: [String: String],
+        idempotencyKey: String
     ) async -> HaviResponseClassification {
         let boundary = HaviMultipart.boundary()
         var request = URLRequest(url: baseURL.appendingPathComponent("api/annotations"))
@@ -116,6 +126,7 @@ public actor HaviUploader {
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(workspace, forHTTPHeaderField: "x-havi-workspace-id")
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
         request.httpBody = HaviMultipart.body(
             boundary: boundary,
             annotationJSON: annotationJSON,

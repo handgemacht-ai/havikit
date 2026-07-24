@@ -52,6 +52,84 @@ final class HaviDiagnosticsTests: XCTestCase {
         )
     }
 
+    // MARK: - Ring bounds: count, per-entry bytes, and the whole-ring budget
+
+    private func utf8Count(_ message: String) -> Int { message.utf8.count }
+
+    func testRingKeepsTheNewestEntriesUpToCapacity() {
+        let buffer = HaviLogBuffer(capacity: 3)
+        for index in 0 ..< 5 { buffer.append(entry(.info, "app", "m\(index)")) }
+        XCTAssertEqual(buffer.snapshot().map(\.message), ["m2", "m3", "m4"])
+    }
+
+    func testShortMessagesAreUntouched() {
+        let buffer = HaviLogBuffer()
+        buffer.append(entry(.info, "app", "card start ref=Haus"))
+        XCTAssertEqual(buffer.snapshot().first?.message, "card start ref=Haus")
+    }
+
+    func testOversizedMessageIsTruncatedWithAMarkerAndFitsTheEntryCap() {
+        let buffer = HaviLogBuffer()
+        buffer.append(entry(.info, "app", String(repeating: "x", count: HaviLogBuffer.maxEntryBytes * 3)))
+
+        let stored = buffer.snapshot().first?.message ?? ""
+        XCTAssertTrue(stored.hasSuffix(HaviLogBuffer.truncationMarker))
+        XCTAssertEqual(utf8Count(stored), HaviLogBuffer.maxEntryBytes)
+        XCTAssertTrue(stored.hasPrefix("xxx"))
+    }
+
+    /// The cut lands on a character boundary, never inside a multi-byte scalar.
+    func testTruncationNeverSplitsAMultiByteCharacter() {
+        let truncated = HaviLogBuffer.truncate(String(repeating: "ä", count: HaviLogBuffer.maxEntryBytes))
+        let body = String(truncated.dropLast(HaviLogBuffer.truncationMarker.count))
+
+        XCTAssertLessThanOrEqual(utf8Count(truncated), HaviLogBuffer.maxEntryBytes)
+        XCTAssertTrue(truncated.hasSuffix(HaviLogBuffer.truncationMarker))
+        XCTAssertEqual(body.count, body.filter { $0 == "ä" }.count, "no replacement character from a split scalar")
+    }
+
+    func testEmojiAtTheCutSurviveIntact() {
+        let truncated = HaviLogBuffer.truncate(String(repeating: "🙂", count: HaviLogBuffer.maxEntryBytes))
+        let body = String(truncated.dropLast(HaviLogBuffer.truncationMarker.count))
+
+        XCTAssertLessThanOrEqual(utf8Count(truncated), HaviLogBuffer.maxEntryBytes)
+        XCTAssertEqual(utf8Count(body) % 4, 0, "the cut fell on a whole 4-byte scalar")
+        XCTAssertEqual(body.count, body.filter { $0 == "🙂" }.count, "no replacement character from a split scalar")
+    }
+
+    /// Well under the count cap, the byte budget is what evicts.
+    func testTotalByteBudgetEvictsOldestFirst() {
+        let buffer = HaviLogBuffer()
+        let chunk = String(repeating: "y", count: HaviLogBuffer.maxEntryBytes)
+        let fitting = HaviLogBuffer.maxTotalBytes / HaviLogBuffer.maxEntryBytes
+
+        for _ in 0 ..< fitting { buffer.append(entry(.info, "app", chunk)) }
+        XCTAssertEqual(buffer.snapshot().count, fitting)
+
+        buffer.append(entry(.info, "app", "newest"))
+        let retained = buffer.snapshot()
+
+        XCTAssertEqual(retained.count, fitting, "the oldest chunk made room for the newest entry")
+        XCTAssertEqual(retained.last?.message, "newest")
+        XCTAssertLessThanOrEqual(retained.reduce(0) { $0 + utf8Count($1.message) }, HaviLogBuffer.maxTotalBytes)
+    }
+
+    func testClearResetsTheByteBudgetToo() {
+        let buffer = HaviLogBuffer()
+        for _ in 0 ..< 40 {
+            buffer.append(entry(.info, "app", String(repeating: "z", count: HaviLogBuffer.maxEntryBytes)))
+        }
+        buffer.clear()
+
+        for _ in 0 ..< 3 { buffer.append(entry(.info, "app", "after")) }
+        XCTAssertEqual(buffer.snapshot().count, 3)
+    }
+
+    func testByteCapsMatchTheDocumentedConstants() {
+        XCTAssertEqual(HaviLogBuffer.maxEntryBytes, 4 * 1024)
+        XCTAssertEqual(HaviLogBuffer.maxTotalBytes, 256 * 1024)
+    }
+
     func testLogNetworkErrorRecordsNetworkErrorLevelEntry() {
         HaviLogBuffer.shared.clear()
         defer { HaviLogBuffer.shared.clear() }

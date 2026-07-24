@@ -1,13 +1,18 @@
 package ai.handgemacht.havikit
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.net.URI
 
 /**
  * Submit retry / fallback loop (wire spec §7.3): success, once-each PNG and
  * smaller re-encodes, single transient retry, immediate reconnect on auth, and the
- * pre-request reconnect guard when the credential is missing.
+ * pre-request reconnect guard when the credential is missing. Plus the two
+ * protocol guarantees around that loop: one idempotency key per annotation across
+ * every send of it, and a rejected credential dropped from the store.
  */
 class HaviUploaderTest {
     private val config =
@@ -36,7 +41,13 @@ class HaviUploaderTest {
         reencoder = reencoder,
     )
 
-    private fun uploader(transport: StubTransport) = HaviUploader(config, transport, retryDelayMillis = 0, sleep = {})
+    private fun uploader(
+        transport: StubTransport,
+        tokenStore: HaviTokenStore? = null,
+    ) = HaviUploader(config, transport, tokenStore, retryDelayMillis = 0, sleep = {})
+
+    private fun connectedStore() =
+        HaviTokenStore().apply { signIn(token = "revoked-tok", workspaceId = "ws-9") }
 
     @Test
     fun successReturnsId() {
@@ -126,5 +137,73 @@ class HaviUploaderTest {
         val transport = StubTransport().enqueueFailure().enqueue(201, """{"data":{"id":"anno-4"}}""")
         assertEquals(HaviSubmitResult.Success("anno-4"), uploader(transport).submit(pending()))
         assertEquals(2, transport.consumedCount)
+    }
+
+    @Test
+    fun bare429RetriesInsteadOfDeadEnding() {
+        val transport = StubTransport().enqueue(429, "").enqueue(201, """{"data":{"id":"anno-5"}}""")
+        assertEquals(HaviSubmitResult.Success("anno-5"), uploader(transport).submit(pending()))
+        assertEquals(2, transport.consumedCount)
+    }
+
+    // Idempotency: one key per annotation, on every send of it.
+
+    @Test
+    fun idempotencyKeyIsSentAndStableAcrossRetriesAndReencodeFallbacks() {
+        val transport =
+            StubTransport()
+                .enqueue(415, """{"error":{"code":"unsupported_media_type"}}""")
+                .enqueue(413, """{"error":{"code":"payload_too_large"}}""")
+                .enqueueFailure()
+                .enqueue(201, """{"data":{"id":"anno-6"}}""")
+        val annotation =
+            pending(
+                format = HaviImageFormat.JPEG,
+                reencoder = HaviImageReencoder { _, _ -> byteArrayOf(4, 2) },
+            )
+
+        assertEquals(HaviSubmitResult.Success("anno-6"), uploader(transport).submit(annotation))
+        assertEquals(4, transport.consumedCount)
+        val keys = transport.requests.map { it.headers["Idempotency-Key"] }
+        assertTrue(annotation.idempotencyKey.isNotEmpty())
+        assertEquals(List(4) { annotation.idempotencyKey }, keys)
+    }
+
+    @Test
+    fun eachPendingAnnotationMintsItsOwnKey() {
+        assertNotEquals(pending().idempotencyKey, pending().idempotencyKey)
+    }
+
+    // Reauth: the credential the server just rejected must not survive in the store.
+
+    @Test
+    fun reauthClearsTheRejectedCredential() {
+        val store = connectedStore()
+        val transport = StubTransport().enqueue(401, """{"error":{"code":"unauthorized"}}""")
+
+        val result = uploader(transport, store).submit(pending())
+
+        assertEquals(HaviSubmitFailureKind.RECONNECT, (result as HaviSubmitResult.Failure).failure.kind)
+        assertFalse(store.hasCredential, "a rejected credential must not stay in the store")
+    }
+
+    @Test
+    fun workspaceReauthClearsTheRejectedCredential() {
+        val store = connectedStore()
+        val transport = StubTransport().enqueue(400, """{"error":{"code":"workspace_not_found"}}""")
+
+        uploader(transport, store).submit(pending())
+
+        assertFalse(store.hasCredential)
+    }
+
+    @Test
+    fun nonAuthFailuresKeepTheCredential() {
+        val store = connectedStore()
+        val transport = StubTransport().enqueue(422, """{"error":{"code":"validation_error"}}""")
+
+        uploader(transport, store).submit(pending())
+
+        assertTrue(store.hasCredential, "only an auth rejection drops the credential")
     }
 }

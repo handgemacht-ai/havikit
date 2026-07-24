@@ -83,10 +83,13 @@ enum HaviErrorMapping {
         if let decoded = try? JSONDecoder().decode(ServerError.self, from: body), let code = decoded.error?.code {
             return .mapped(mapCode(code))
         }
-        // No JSON error.code: classify by transport class — 5xx transient, else terminal.
-        if status >= 500 {
+        // No JSON error.code: classify by transport class — 5xx and a bare 429
+        // (rate limit / edge throttle, often body-less) transient, else terminal.
+        if status == tooManyRequests || status >= 500 {
             return .mapped(transientTransport)
         }
         return .mapped(.init(code: nil, userMessage: "Couldn't submit annotation.", action: .terminal))
     }
+
+    private static let tooManyRequests = 429
 }

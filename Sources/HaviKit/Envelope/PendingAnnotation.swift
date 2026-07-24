@@ -6,6 +6,11 @@ import Foundation
 /// cropped, redacted outgoing image for the server-driven fallbacks — nothing
 /// mutable, so a
 /// later context/tag mutation or credential change cannot race an in-flight send.
+///
+/// `idempotencyKey` is minted once per pending annotation and rides on every send
+/// of it — the transient retry and both re-encode fallbacks — so a request that
+/// timed out after the server had already stored it cannot become a duplicate
+/// annotation.
 public struct PendingAnnotation: Sendable {
     public let annotationJSON: String
     public let imageData: Data?
@@ -14,6 +19,7 @@ public struct PendingAnnotation: Sendable {
     public let workspaceID: String?
     public let bearerToken: String?
     public let reencoder: HaviImageReencoder?
+    public let idempotencyKey: String
 
     public init(
         annotationJSON: String,
@@ -22,7 +28,8 @@ public struct PendingAnnotation: Sendable {
         siblings: [String: String],
         workspaceID: String?,
         bearerToken: String? = nil,
-        reencoder: HaviImageReencoder? = nil
+        reencoder: HaviImageReencoder? = nil,
+        idempotencyKey: String = UUID().uuidString
     ) {
         self.annotationJSON = annotationJSON
         self.imageData = imageData
@@ -31,6 +38,7 @@ public struct PendingAnnotation: Sendable {
         self.workspaceID = workspaceID
         self.bearerToken = bearerToken
         self.reencoder = reencoder
+        self.idempotencyKey = idempotencyKey
     }
 
     /// Assembles the pending annotation from a builder input plus encoded image

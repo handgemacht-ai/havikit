@@ -122,9 +122,24 @@ final class HaviTransportTests: XCTestCase {
         }
     }
 
+    /// A rate limit arrives body-less from an edge proxy: retryable, not a dead end.
+    func testBare429ClassifiesAsTransient() {
+        XCTAssertEqual(HaviErrorMapping.classify(status: 429, body: Data()), .mapped(HaviErrorMapping.transientTransport))
+        XCTAssertEqual(
+            HaviErrorMapping.classify(status: 429, body: Data("<html>Too Many Requests</html>".utf8)),
+            .mapped(HaviErrorMapping.transientTransport)
+        )
+        // A 429 that DOES carry a code still maps on the code.
+        if case .mapped(let e) = HaviErrorMapping.classify(status: 429, body: Data("{\"error\":{\"code\":\"unauthorized\"}}".utf8)) {
+            XCTAssertEqual(e.action, .reauth)
+        } else {
+            XCTFail("expected the coded mapping to win")
+        }
+    }
+
     // MARK: - End-to-end submit over a stubbed URLProtocol
 
-    private func makeUploader() -> HaviUploader {
+    private func makeUploader(tokenStore: HaviTokenStore? = nil) -> HaviUploader {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         let session = URLSession(configuration: configuration)
@@ -140,7 +155,13 @@ final class HaviTransportTests: XCTestCase {
             devToken: "dev-token",
             redaction: HaviRedactionPolicy()
         )
-        return HaviUploader(config: config, session: session, retryDelayNanoseconds: 0)
+        return HaviUploader(config: config, session: session, retryDelayNanoseconds: 0, tokenStore: tokenStore)
+    }
+
+    private func connectedStore() -> HaviTokenStore {
+        let store = HaviTokenStore(backing: HaviInMemoryCredentialBacking())
+        store.signIn(token: "revoked-tkn", workspaceID: "ws-1")
+        return store
     }
 
     private func pending(format: HaviImageFormat = .png, token: String? = "tkn", workspace: String? = "ws-1") -> PendingAnnotation {
@@ -158,12 +179,14 @@ final class HaviTransportTests: XCTestCase {
     func testSubmitSuccessSendsHeaders() async {
         StubURLProtocol.reset()
         StubURLProtocol.enqueue(status: 201, json: "{\"data\":{\"id\":\"anno-1\"}}")
-        let result = await makeUploader().submit(pending())
+        let annotation = pending()
+        let result = await makeUploader().submit(annotation)
         XCTAssertEqual(result, .success(id: "anno-1"))
 
         let request = StubURLProtocol.lastRequests.last
         XCTAssertEqual(request?.value(forHTTPHeaderField: "Authorization"), "Bearer tkn")
         XCTAssertEqual(request?.value(forHTTPHeaderField: "x-havi-workspace-id"), "ws-1")
+        XCTAssertEqual(request?.value(forHTTPHeaderField: "Idempotency-Key"), annotation.idempotencyKey)
         XCTAssertTrue(request?.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") ?? false)
         XCTAssertEqual(request?.url?.absoluteString, "https://havi.example.test/api/annotations")
     }
@@ -241,6 +264,75 @@ final class HaviTransportTests: XCTestCase {
             XCTFail("expected reconnect failure")
         }
         XCTAssertEqual(StubURLProtocol.consumedCount, 0)
+    }
+
+    func testBare429RetriesInsteadOfDeadEnding() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.enqueue(status: 429, json: "")
+        StubURLProtocol.enqueue(status: 201, json: "{\"data\":{\"id\":\"anno-5\"}}")
+        let result = await makeUploader().submit(pending())
+        XCTAssertEqual(result, .success(id: "anno-5"))
+        XCTAssertEqual(StubURLProtocol.consumedCount, 2)
+    }
+
+    // MARK: - Idempotency: one key per annotation, on every send of it
+
+    func testIdempotencyKeyIsStableAcrossRetriesAndReencodeFallbacks() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.enqueue(status: 415, json: "{\"error\":{\"code\":\"unsupported_media_type\"}}")
+        StubURLProtocol.enqueue(status: 413, json: "{\"error\":{\"code\":\"payload_too_large\"}}")
+        StubURLProtocol.enqueue(status: 503, json: "{\"error\":{\"code\":\"storage_error\"}}")
+        StubURLProtocol.enqueue(status: 201, json: "{\"data\":{\"id\":\"anno-6\"}}")
+
+        let annotation = pending(format: .jpeg)
+        let result = await makeUploader().submit(annotation)
+
+        XCTAssertEqual(result, .success(id: "anno-6"))
+        XCTAssertEqual(StubURLProtocol.consumedCount, 4)
+        XCTAssertFalse(annotation.idempotencyKey.isEmpty)
+        let keys = StubURLProtocol.lastRequests.compactMap { $0.value(forHTTPHeaderField: "Idempotency-Key") }
+        XCTAssertEqual(keys, Array(repeating: annotation.idempotencyKey, count: 4))
+    }
+
+    func testEachPendingAnnotationMintsItsOwnKey() {
+        XCTAssertNotEqual(pending().idempotencyKey, pending().idempotencyKey)
+    }
+
+    // MARK: - Reauth drops the credential the server just rejected
+
+    func testReauthClearsTheRejectedCredential() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.enqueue(status: 401, json: "{\"error\":{\"code\":\"unauthorized\"}}")
+        let store = connectedStore()
+
+        let result = await makeUploader(tokenStore: store).submit(pending())
+
+        if case .failure(let failure) = result {
+            XCTAssertEqual(failure.kind, .reconnect)
+        } else {
+            XCTFail("expected reconnect failure")
+        }
+        XCTAssertFalse(store.hasCredential, "a rejected credential must not stay in the store")
+    }
+
+    func testWorkspaceReauthClearsTheRejectedCredential() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.enqueue(status: 400, json: "{\"error\":{\"code\":\"workspace_not_found\"}}")
+        let store = connectedStore()
+
+        _ = await makeUploader(tokenStore: store).submit(pending())
+
+        XCTAssertFalse(store.hasCredential)
+    }
+
+    func testNonAuthFailuresKeepTheCredential() async {
+        StubURLProtocol.reset()
+        StubURLProtocol.enqueue(status: 422, json: "{\"error\":{\"code\":\"validation_error\"}}")
+        let store = connectedStore()
+
+        _ = await makeUploader(tokenStore: store).submit(pending())
+
+        XCTAssertTrue(store.hasCredential, "only an auth rejection drops the credential")
     }
 }
 
