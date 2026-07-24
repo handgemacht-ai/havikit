@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import kotlinx.coroutines.CoroutineScope
 
 /**
  * The Android capture runtime, built once by [Havi.start]. It owns the immutable
@@ -30,8 +31,13 @@ internal class HaviRuntime(
     val connectService: HaviConnectService = HaviConnectService(config, tokenStore, transport)
     private val labelService: HaviLabelService = HaviLabelService(config, transport)
 
+    private val submissions = HaviSubmitScope()
+
+    /** The scope an in-flight submit runs on — outlives the sheet's composition, see [HaviSubmitScope]. */
+    val submitScope: CoroutineScope get() = submissions.scope
+
     private val captureController = HaviCaptureController(config, contextStore, logBuffer)
-    private val captureHost = HaviCaptureHost(this, activityTracker::currentActivity)
+    private val captureHost = HaviCaptureHost(this, context, activityTracker::currentActivity)
     private val triggers =
         HaviTriggerController(
             context = application,
@@ -57,7 +63,10 @@ internal class HaviRuntime(
 
                 override fun onBackground() = triggers.disarmShake()
 
-                override fun onResumed(activity: Activity) = triggers.attachLongPress(activity)
+                override fun onResumed(activity: Activity) {
+                    triggers.attachLongPress(activity)
+                    captureHost.onHostResumed(activity)
+                }
 
                 override fun onPaused(activity: Activity) = triggers.detachLongPress()
 
@@ -91,6 +100,15 @@ internal class HaviRuntime(
     /** The capture sheet was dismissed — release the in-flight capture so the next trigger works. */
     fun finishCapture() {
         captureController.finishCapture()
+    }
+
+    /**
+     * Drops an in-flight submit. Called only when the sheet is really gone (close,
+     * terminal failure, successful send) — never for a configuration change, which is
+     * precisely the case the SDK-owned scope exists to survive.
+     */
+    fun cancelSubmission() {
+        submissions.cancelInFlight()
     }
 
     /** Credential resolution at submit (wire spec §1.1): stored token overrides the stamped dev token. */

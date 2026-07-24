@@ -18,9 +18,15 @@ import kotlinx.coroutines.withContext
  * the uploader — off the main thread ([HaviSubmitPipeline]); on failure the sheet
  * stays open on the details screen, fully editable, with the `error.code`-mapped
  * reason. Compose-observable so both screens read/write one shared model.
+ *
+ * The model is owned by [HaviCaptureHost], not by the composition, and [scope] is
+ * the SDK-owned [HaviSubmitScope]: one capture session survives the host Activity
+ * being destroyed and recreated, so a configuration change mid-submit neither
+ * cancels the upload nor loses the markup, the comment or which screen the user was
+ * on. Everything the sheet renders — including [showDetails] — therefore lives here.
  */
 internal class HaviCaptureViewModel(
-    private val frame: HaviCaptureFrame,
+    val frame: HaviCaptureFrame,
     private val runtime: HaviRuntime,
     private val scope: CoroutineScope,
     initialPriority: HaviPriority,
@@ -40,6 +46,9 @@ internal class HaviCaptureViewModel(
     init {
         markup.onToolChange = ::onToolChanged
     }
+
+    /** Screen 1 (markup) vs Screen 2 (details); the sheet returns to it after a recreation. */
+    var showDetails by mutableStateOf(false)
 
     var comment by mutableStateOf("")
     var prioritySelection by mutableStateOf(initialPriority.wireValue)
@@ -122,24 +131,20 @@ internal class HaviCaptureViewModel(
         val workspace = runtime.resolvedWorkspaceId()
 
         scope.launch {
-            val prepared =
-                withContext(Dispatchers.Default) {
-                    HaviSubmitPipeline.prepare(
-                        frame = frame,
-                        draft = draft,
-                        config = config,
-                        workspaceId = workspace,
-                        bearerToken = token,
-                    )
-                }
             val result =
-                if (prepared == null) {
-                    HaviSubmitResult.Failure(
-                        HaviSubmitFailure("Couldn't prepare the screenshot.", HaviSubmitFailureKind.TERMINAL, null),
-                    )
-                } else {
-                    withContext(Dispatchers.IO) { runtime.uploader.submit(prepared.pending) }
-                }
+                HaviSubmitPipeline.guarded {
+                    val prepared =
+                        withContext(Dispatchers.Default) {
+                            HaviSubmitPipeline.prepare(
+                                frame = frame,
+                                draft = draft,
+                                config = config,
+                                workspaceId = workspace,
+                                bearerToken = token,
+                            )
+                        }
+                    prepared?.let { withContext(Dispatchers.IO) { runtime.uploader.submit(it.pending) } }
+                } ?: HaviSubmitResult.Failure(HaviSubmitPipeline.preparationFailure)
 
             when (result) {
                 is HaviSubmitResult.Success -> {

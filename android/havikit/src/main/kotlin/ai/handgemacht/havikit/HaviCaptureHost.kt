@@ -1,6 +1,7 @@
 package ai.handgemacht.havikit
 
 import android.app.Activity
+import android.content.Context
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Toast
@@ -16,31 +17,94 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
  * successful submit dismisses the sheet and raises the brief "Report sent"
  * confirmation.
  *
- * If the host Activity is torn down while the sheet is up (a configuration change —
- * rotation, dark-mode/font/locale toggle, multi-window resize — recreates it),
- * [onHostDestroyed] detaches the overlay and releases the controller so capture is
- * not left permanently disabled with a leaked Activity.
+ * The host, not the composition, owns the capture **session** (the
+ * [HaviCaptureViewModel] and with it the frozen frame, the markup, the comment and
+ * the submit phase). A configuration change — rotation, dark-mode/font/locale
+ * toggle, multi-window resize — destroys the Activity and the overlay with it, but
+ * the session survives: [onHostDestroyed] only detaches the view, and
+ * [onHostResumed] re-mounts the same session onto the recreated Activity. The submit
+ * itself runs on [HaviRuntime]'s scope, so it keeps going while no view is attached
+ * and its outcome lands on the re-mounted sheet — or, if it finishes first, as the
+ * usual dismissal plus confirmation. Only a real dismiss ends the session.
  */
 internal class HaviCaptureHost(
     private val runtime: HaviRuntime,
+    appContext: Context,
     private val activityProvider: () -> Activity?,
 ) {
+    private val appContext = appContext.applicationContext
+
     private var overlay: ComposeView? = null
     private var host: Activity? = null
+    private var session: HaviCaptureViewModel? = null
 
     /** Freeze delivered — mount the sheet over the current Activity. Main-thread only. */
     fun present(frame: HaviCaptureFrame) {
-        if (overlay != null) {
+        if (session != null) {
             runtime.finishCapture()
             return
         }
         val activity = activityProvider()
-        val content = activity?.findViewById<ViewGroup>(android.R.id.content)
-        if (activity == null || content == null) {
+        if (activity == null) {
             runtime.finishCapture()
             return
         }
 
+        val model =
+            HaviCaptureViewModel(
+                frame = frame,
+                runtime = runtime,
+                scope = runtime.submitScope,
+                initialPriority = Havi.consumePendingPriority() ?: HaviPriority.MEDIUM,
+                onSubmitSuccess = { confirmSubmission() },
+            )
+        session = model
+        if (!mount(activity, model)) {
+            session = null
+            runtime.finishCapture()
+        }
+    }
+
+    /**
+     * An Activity resumed. When a configuration change left a session without a view,
+     * this is the recreated Activity — put the sheet back, in the state the user left
+     * it (screen, markup, comment, and a submit that never stopped running).
+     */
+    fun onHostResumed(activity: Activity) {
+        if (overlay != null) return
+        val model = session ?: return
+        mount(activity, model)
+    }
+
+    /**
+     * The Activity hosting the overlay was destroyed. A configuration change hands the
+     * session to the Activity that replaces it; anything else (the host app finishing
+     * the Activity under the sheet) is a real dismiss, so the controller is released
+     * and neither the destroyed Activity nor its detached ComposeView is retained.
+     * Main-thread only.
+     */
+    fun onHostDestroyed(activity: Activity) {
+        if (host !== activity) return
+        if (session != null && activity.isChangingConfigurations) {
+            detach()
+        } else {
+            dismiss()
+        }
+    }
+
+    fun dismiss() {
+        if (session == null && overlay == null) return
+        detach()
+        session = null
+        runtime.cancelSubmission()
+        runtime.finishCapture()
+    }
+
+    private fun mount(
+        activity: Activity,
+        model: HaviCaptureViewModel,
+    ): Boolean {
+        val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return false
         val view =
             ComposeView(activity).apply {
                 setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
@@ -51,10 +115,9 @@ internal class HaviCaptureHost(
                     )
                 setContent {
                     HaviCaptureFlow(
-                        frame = frame,
+                        model = model,
                         runtime = runtime,
                         onClose = { dismiss() },
-                        onSubmitSuccess = { confirmSubmission(activity) },
                     )
                 }
             }
@@ -62,27 +125,18 @@ internal class HaviCaptureHost(
         overlay = view
         host = activity
         content.addView(view)
+        return true
     }
 
-    private fun confirmSubmission(activity: Activity) {
-        dismiss()
-        Toast.makeText(activity.applicationContext, "Report sent", Toast.LENGTH_SHORT).show()
-    }
-
-    /**
-     * The Activity hosting the overlay was destroyed (e.g. a configuration change
-     * recreated it). Tear the sheet down so the controller is released and neither the
-     * destroyed Activity nor its detached ComposeView is retained. Main-thread only.
-     */
-    fun onHostDestroyed(activity: Activity) {
-        if (host === activity) dismiss()
-    }
-
-    fun dismiss() {
+    private fun detach() {
         val view = overlay ?: return
         (view.parent as? ViewGroup)?.removeView(view)
         overlay = null
         host = null
-        runtime.finishCapture()
+    }
+
+    private fun confirmSubmission() {
+        dismiss()
+        Toast.makeText(appContext, "Report sent", Toast.LENGTH_SHORT).show()
     }
 }

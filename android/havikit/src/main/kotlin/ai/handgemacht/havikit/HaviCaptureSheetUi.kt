@@ -1,5 +1,7 @@
 package ai.handgemacht.havikit
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,7 +35,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -48,6 +49,36 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
+ * What system Back does while the capture sheet is up. Without an interceptor Back
+ * falls straight through to the host app, which navigates or finishes underneath a
+ * sheet that is still on screen.
+ */
+internal enum class HaviBackAction {
+    /** A submit is in flight: the sheet locks every affordance, and Back is one of them. */
+    IGNORE,
+
+    /** The connect sheet is layered over the capture flow and takes the gesture first. */
+    CLOSE_CONNECT,
+
+    /** Back is the Close affordance. */
+    DISMISS,
+
+    ;
+
+    internal companion object {
+        fun resolve(
+            isSubmitting: Boolean,
+            connectOpen: Boolean,
+        ): HaviBackAction =
+            when {
+                isSubmitting -> IGNORE
+                connectOpen -> CLOSE_CONNECT
+                else -> DISMISS
+            }
+    }
+}
+
+/**
  * The capture flow (Part B4), mirroring the iOS two-screen `HaviCaptureSheet`:
  * Screen 1 is the frozen screenshot's markup canvas (seven tools, six colors,
  * undo+redo, confirmed crop); Screen 2 is diagnostics, connect state, comment,
@@ -55,51 +86,55 @@ import androidx.compose.ui.unit.dp
  * read/write one shared [HaviCaptureViewModel]. On submit failure the sheet stays
  * open on Screen 2 with the `error.code`-mapped reason; on success the host
  * dismisses it and raises the "Report sent" confirmation.
+ *
+ * The model is passed in rather than remembered: [HaviCaptureHost] owns it for the
+ * whole capture session so a recreated Activity re-enters the flow exactly where it
+ * left off. Back is intercepted per [HaviBackAction], but only when the host Activity
+ * actually provides a back dispatcher — HaviKit drops into apps whose Activities are
+ * not `ComponentActivity`, and a missing dispatcher owner must not be a crash.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun HaviCaptureFlow(
-    frame: HaviCaptureFrame,
+    model: HaviCaptureViewModel,
     runtime: HaviRuntime,
     onClose: () -> Unit,
-    onSubmitSuccess: () -> Unit,
 ) {
     MaterialTheme {
         Surface(
             modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true },
             color = MaterialTheme.colorScheme.surface,
         ) {
-            val scope = rememberCoroutineScope()
+            val frame = model.frame
             val image = remember(frame) { frame.bitmap.asImageBitmap() }
-            val model =
-                remember {
-                    HaviCaptureViewModel(
-                        frame = frame,
-                        runtime = runtime,
-                        scope = scope,
-                        initialPriority = Havi.consumePendingPriority() ?: HaviPriority.MEDIUM,
-                        onSubmitSuccess = onSubmitSuccess,
-                    )
-                }
 
-            var showDetails by remember { mutableStateOf(false) }
             var showConnect by remember { mutableStateOf(false) }
             var connectReconnect by remember { mutableStateOf(false) }
             var showDiagnostics by remember { mutableStateOf(false) }
 
-            if (!showDetails) {
+            if (LocalOnBackPressedDispatcherOwner.current != null) {
+                BackHandler {
+                    when (HaviBackAction.resolve(model.isSubmitting, showConnect)) {
+                        HaviBackAction.IGNORE -> Unit
+                        HaviBackAction.CLOSE_CONNECT -> showConnect = false
+                        HaviBackAction.DISMISS -> onClose()
+                    }
+                }
+            }
+
+            if (!model.showDetails) {
                 HaviCaptureImageScreen(
                     model = model,
                     image = image,
                     imagePixelSize = frame.imagePixelSize,
                     onClose = onClose,
-                    onNext = { showDetails = true },
+                    onNext = { model.showDetails = true },
                 )
             } else {
                 HaviCaptureDetailsScreen(
                     model = model,
                     runtime = runtime,
-                    onBack = { showDetails = false },
+                    onBack = { model.showDetails = false },
                     onClose = onClose,
                     openConnect = { reconnect ->
                         connectReconnect = reconnect
