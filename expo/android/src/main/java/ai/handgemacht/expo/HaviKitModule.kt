@@ -45,14 +45,13 @@ internal class HaviStartConfig : Record {
 }
 
 /**
- * Rejects `start` when the SDK is enabled without a usable base URL — the
- * catchable counterpart of `HaviConfig.fromMetaData`'s `IllegalStateException`,
- * so a misconfiguration never hard-crashes the React Native runtime.
+ * Rejects `start` when the SDK is enabled without a usable base URL. JS gets a
+ * catchable rejection where the native readers resolve to the inert config, so
+ * the misconfiguration is visible at the call site it came from.
  */
-internal class HaviInvalidBaseUrlException(cause: Throwable? = null) :
+internal class HaviInvalidBaseUrlException :
     CodedException(
         "HaviKit is enabled but config.baseUrl is missing or invalid — pass a valid HAVI_BASE_URL.",
-        cause,
     )
 
 /** Rejects `start` when the Android application context cannot be resolved. */
@@ -67,6 +66,10 @@ class HaviKitModule : Module() {
             val applicationContext =
                 appContext.reactContext?.applicationContext ?: throw HaviContextLostException()
 
+            if (config.enabled && HaviConfig.validBaseUrlOrNull(config.baseUrl) == null) {
+                throw HaviInvalidBaseUrlException()
+            }
+
             val meta =
                 mapOf(
                     "HAVI_ENABLED" to if (config.enabled) "true" else null,
@@ -80,14 +83,7 @@ class HaviKitModule : Module() {
                     "HAVI_DEV_TOKEN" to config.devToken,
                 )
 
-            val resolved =
-                try {
-                    HaviConfig.fromMetaData(meta)
-                } catch (error: IllegalStateException) {
-                    throw HaviInvalidBaseUrlException(error)
-                }
-
-            Havi.start(applicationContext, resolved)
+            Havi.start(applicationContext, HaviConfig.fromMetaData(meta))
             // JS starts the SDK from an effect, long after MainActivity resumed, so the
             // SDK's activity tracker registers too late to ever see it. Expo knows the
             // current Activity — hand it over, or the first capture of every cold start

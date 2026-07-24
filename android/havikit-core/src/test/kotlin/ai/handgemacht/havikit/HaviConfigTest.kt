@@ -3,12 +3,11 @@ package ai.handgemacht.havikit
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.net.URI
 
-/** Config resolution (wire spec §14): inert when unconfigured, fail-fast, omit-never-empty. */
+/** Config resolution (wire spec §14): inert when unconfigured or misconfigured, omit-never-empty. */
 class HaviConfigTest {
     @Test
     fun unsetEnabledIsInert() {
@@ -25,17 +24,21 @@ class HaviConfigTest {
     }
 
     @Test
-    fun enabledButMissingOrInvalidBaseUrlFailsFast() {
-        assertThrows(IllegalStateException::class.java) {
-            HaviConfig.fromMetaData(mapOf("HAVI_ENABLED" to "YES"))
-        }
-        assertThrows(IllegalStateException::class.java) {
-            HaviConfig.fromMetaData(mapOf("HAVI_ENABLED" to "YES", "HAVI_BASE_URL" to "not a url"))
-        }
-        // empty string is treated as absent -> still fails fast
-        assertThrows(IllegalStateException::class.java) {
-            HaviConfig.fromMetaData(mapOf("HAVI_ENABLED" to "YES", "HAVI_BASE_URL" to ""))
-        }
+    fun enabledButMissingOrInvalidBaseUrlIsInert() {
+        assertEquals(HaviConfig.Inert, HaviConfig.fromMetaData(mapOf("HAVI_ENABLED" to "YES")))
+        assertEquals(
+            HaviConfig.Inert,
+            HaviConfig.fromMetaData(mapOf("HAVI_ENABLED" to "YES", "HAVI_BASE_URL" to "not a url")),
+        )
+        // empty string is treated as absent -> still inert
+        assertEquals(
+            HaviConfig.Inert,
+            HaviConfig.fromMetaData(mapOf("HAVI_ENABLED" to "YES", "HAVI_BASE_URL" to "")),
+        )
+        assertEquals(
+            HaviConfig.Inert,
+            HaviConfig.fromMetaData(mapOf("HAVI_ENABLED" to "YES", "HAVI_BASE_URL" to "havi.test")),
+        )
     }
 
     @Test

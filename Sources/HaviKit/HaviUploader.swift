@@ -24,7 +24,11 @@ public actor HaviUploader {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 60
-        self.session = URLSession(configuration: configuration)
+        self.session = URLSession(
+            configuration: configuration,
+            delegate: HaviNoRedirectDelegate(),
+            delegateQueue: nil
+        )
         self.retryDelayNanoseconds = 1_500_000_000
         self.tokenStore = tokenStore
     }

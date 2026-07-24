@@ -19,24 +19,26 @@ internal struct HaviStartConfig: Record {
 }
 
 /// Thrown when the SDK is enabled without a usable base URL. Surfaces as a
-/// rejected JS promise — the catchable counterpart of `HaviConfig.fromBundle`'s
-/// `fatalError`, so a misconfiguration never hard-crashes the RN runtime.
+/// rejected JS promise where the native readers resolve to the inert config, so
+/// the misconfiguration is visible at the call site it came from.
 internal final class HaviInvalidBaseURLException: Exception {
   override var reason: String {
     "HaviKit is enabled but config.baseUrl is missing or invalid — pass a valid HAVI_BASE_URL."
   }
 }
 
-/// Builds the immutable `HaviConfig` from the JS payload. Enabled-without-a-valid
-/// URL throws (rejecting `start`); a disabled config resolves to the inert path.
-/// Called from `start`, which hops to `.main`, so this runs on the main thread.
+/// Builds the immutable `HaviConfig` from the JS payload, validating the base URL
+/// with the SDK's own `HaviConfig.validBaseURL` so JS and the stamped-plist path
+/// accept exactly the same inputs. Enabled-without-a-valid URL throws (rejecting
+/// `start`); a disabled config resolves to the inert path. Called from `start`,
+/// which hops to `.main`, so this runs on the main thread.
 private func makeHaviConfig(from config: HaviStartConfig) throws -> HaviConfig {
-  let trimmed = config.baseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-  let url = trimmed.isEmpty ? nil : URL(string: trimmed)
+  let url = HaviConfig.validBaseURL(config.baseUrl)
   if config.enabled && url == nil {
     throw HaviInvalidBaseURLException()
   }
-  let format = HaviImageFormat(rawValue: (config.imageFormat ?? "png").lowercased()) ?? .png
+  let rawFormat = (config.imageFormat ?? "png").trimmingCharacters(in: .whitespacesAndNewlines)
+  let format = HaviImageFormat(rawValue: rawFormat.lowercased()) ?? .png
   return HaviConfig(
     isEnabled: config.enabled,
     baseURL: url,

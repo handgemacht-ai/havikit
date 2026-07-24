@@ -19,7 +19,11 @@ public actor HaviLabelService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 15
         configuration.timeoutIntervalForResource = 30
-        self.session = URLSession(configuration: configuration)
+        self.session = URLSession(
+            configuration: configuration,
+            delegate: HaviNoRedirectDelegate(),
+            delegateQueue: nil
+        )
     }
 
     /// Test seam: a session backed by a stub `URLProtocol` so the fetch runs

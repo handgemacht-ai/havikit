@@ -159,6 +159,10 @@ struct HaviKeychainBacking: HaviCredentialBacking {
         return String(data: data, encoding: .utf8)
     }
 
+    /// Delete-then-add, so an item written before `kSecAttrAccessible` was set
+    /// picks the attribute up on the next store. The credential is only ever used
+    /// by a foreground capture on this device, so it needs neither background
+    /// access before the first unlock nor a place in an iCloud/device backup.
     func write(_ value: String, account: String) {
         guard let data = value.data(using: .utf8) else { return }
         delete(account)
@@ -167,6 +171,7 @@ struct HaviKeychainBacking: HaviCredentialBacking {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
         SecItemAdd(query as CFDictionary, nil)
     }

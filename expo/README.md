@@ -99,16 +99,17 @@ HaviKit.log('checkout started', 'info', 'app');
 HaviKit.capture(); // present the capture sheet programmatically
 ```
 
-`start(config)` mirrors the stamped `HAVI_*` keys 1:1. When `enabled` is set
-without a valid `baseUrl`, `start()` **rejects** with a catchable startup error
-rather than crashing the app. When `enabled` is `false` — or `start()` is never
-called — every entry point is inert.
+`start(config)` mirrors the stamped `HAVI_*` keys 1:1. `baseUrl` must be an
+absolute `http`/`https` URL with a host; when `enabled` is set without one,
+`start()` **rejects** with a catchable startup error rather than crashing the
+app. When `enabled` is `false` — or `start()` is never called — every entry point
+is inert.
 
 ## API
 
 | Function | Signature | Notes |
 | --- | --- | --- |
-| `start` | `(config: HaviConfig) => Promise<void>` | Starts / re-arms the SDK. Idempotent. Rejects when enabled without a valid `baseUrl`. |
+| `start` | `(config: HaviConfig) => Promise<void>` | Starts the SDK; the first call wins and later calls are ignored. Rejects when enabled without a valid `baseUrl`. |
 | `capture` | `(screen?: string) => void` | Presents the capture sheet, optionally naming the screen. |
 | `log` | `(message: string, level?: HaviLogLevel, category?: string) => void` | Appends a breadcrumb (records even when inert). |
 | `logNetworkError` | `(message: string) => void` | Records a network/RPC failure line. |

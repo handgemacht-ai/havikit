@@ -67,7 +67,11 @@ public actor HaviConnectService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 60
-        self.session = URLSession(configuration: configuration)
+        self.session = URLSession(
+            configuration: configuration,
+            delegate: HaviNoRedirectDelegate(),
+            delegateQueue: nil
+        )
         self.now = { Date() }
         self.sleep = { seconds in
             try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
