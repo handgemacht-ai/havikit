@@ -175,6 +175,22 @@ xcodebuild test -scheme HaviKit -destination 'platform=iOS Simulator,name=iPhone
 
 CI (`.github/workflows/ci.yml`) runs both on `macos-latest`.
 
+## Release notes
+
+[`CHANGELOG.md`](CHANGELOG.md) covers every platform in this repo (iOS, Android,
+React Native) under one version number.
+
+- Every pull request with a user-visible change adds a line to the
+  `[Unreleased]` section, prefixed with the platform it affects — **iOS**,
+  **Android**, **React Native**, or **All** — under the matching Keep a Changelog
+  heading (`Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`).
+  Write it for someone integrating the SDK: what changed for them, not what the
+  commit did. Internal-only churn (CI, refactors, test plumbing) goes in a single
+  `Internal` line, or nowhere.
+- Cutting a release moves the `[Unreleased]` block under a new version heading
+  with the release date (`## [x.y.z] - YYYY-MM-DD`), adds the compare link at the
+  bottom of the file, and leaves an empty `[Unreleased]` section behind.
+
 ## Envelope golden fixture (cross-repo contract)
 
 `Tests/HaviKitTests/Fixtures/havi-envelope-golden.json` is the **canonical home**
