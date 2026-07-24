@@ -25,7 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 HaviOverlay {
-                    SampleApp()
+                    SampleAppUi()
                 }
             }
         }
@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SampleApp() {
+private fun SampleAppUi() {
     val screens = SampleScreen.entries
     var selected by rememberSaveable { mutableStateOf(0) }
     val screen = screens[selected]
