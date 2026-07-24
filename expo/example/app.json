@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "expo-havikit-example",
+    "slug": "expo-havikit-example",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.handgemacht.havikit.example"
+    },
+    "android": {
+      "package": "ai.handgemacht.havikit.example",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "../app.plugin.js",
+        {
+          "android": {
+            "useMavenLocal": true
+          },
+          "ios": {
+            "havikitPodPath": "../.."
+          }
+        }
+      ]
+    ]
+  }
+}
