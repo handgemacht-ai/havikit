@@ -14,7 +14,8 @@
     "skipLibCheck": true,
     "noUnusedLocals": true,
     "outDir": "build",
-    "rootDir": "src"
+    "rootDir": "src",
+    "tsBuildInfoFile": "./build/tsconfig.tsbuildinfo"
   },
   "include": ["./src"],
   "exclude": ["**/__mocks__/*", "**/__tests__/*"]
