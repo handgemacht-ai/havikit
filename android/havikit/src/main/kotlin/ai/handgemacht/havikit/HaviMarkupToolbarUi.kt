@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -153,6 +154,3 @@ internal fun HaviColorSwatchRow(markup: HaviMarkupEditor) {
 }
 
 private fun Modifier.clip8(): Modifier = clip(RoundedCornerShape(11.dp))
-
-private fun Modifier.clip(shape: androidx.compose.ui.graphics.Shape): Modifier =
-    this.then(androidx.compose.ui.draw.clip(shape))
