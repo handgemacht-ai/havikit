@@ -1,5 +1,6 @@
 package ai.handgemacht.havikit
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.os.Handler
@@ -59,6 +60,27 @@ public object Havi {
         runtime = created
         isEnabled = true
         created.start()
+    }
+
+    /**
+     * Names the Activity the user is currently looking at. [start] registers the
+     * activity-lifecycle callbacks it tracks windows with, so starting after the first
+     * Activity resumed — every React Native / Expo cold start, where JS calls [start]
+     * from an effect — leaves the SDK with no window to capture until the app is
+     * backgrounded and foregrounded once. Hosts that know the current Activity call this
+     * right after [start] to close that gap.
+     *
+     * Pass a *resumed* Activity. Safe to repeat (re-seeding the tracked Activity is a
+     * no-op) and callable from any thread; the seeding itself runs on the main thread.
+     * Unnecessary when [start] runs in `Application.onCreate`.
+     */
+    @JvmStatic
+    public fun attachActivity(activity: Activity) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            runtime?.attachActivity(activity)
+        } else {
+            mainHandler.post { runtime?.attachActivity(activity) }
+        }
     }
 
     /**

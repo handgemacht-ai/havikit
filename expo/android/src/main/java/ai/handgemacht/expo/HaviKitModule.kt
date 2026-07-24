@@ -88,9 +88,15 @@ class HaviKitModule : Module() {
                 }
 
             Havi.start(applicationContext, resolved)
+            // JS starts the SDK from an effect, long after MainActivity resumed, so the
+            // SDK's activity tracker registers too late to ever see it. Expo knows the
+            // current Activity — hand it over, or the first capture of every cold start
+            // has no window to freeze.
+            appContext.currentActivity?.let { Havi.attachActivity(it) }
         }
 
         Function("capture") { screen: String? ->
+            appContext.currentActivity?.let { Havi.attachActivity(it) }
             Havi.triggerCapture(screen)
         }
 

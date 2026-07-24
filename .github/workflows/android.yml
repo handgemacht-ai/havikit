@@ -42,6 +42,8 @@ jobs:
           echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
       - name: Core unit tests (pure JVM)
         run: ./gradlew :havikit-core:test
+      - name: Android library unit tests (JVM)
+        run: ./gradlew :havikit:testDebugUnitTest
       - name: Android library lint
         run: ./gradlew :havikit:lint
       - name: Assemble Android AAR

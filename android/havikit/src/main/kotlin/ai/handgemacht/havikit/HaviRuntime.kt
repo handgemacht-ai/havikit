@@ -18,7 +18,7 @@ internal class HaviRuntime(
     private val application: Application?,
     val config: HaviConfig,
     context: Context,
-    logBuffer: HaviLogBuffer,
+    private val logBuffer: HaviLogBuffer,
     contextStore: HaviContextStore,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -66,10 +66,25 @@ internal class HaviRuntime(
         app.registerActivityLifecycleCallbacks(activityTracker)
     }
 
+    /** Adopts an already-resumed Activity the tracker registered too late to see. Main-thread only. */
+    fun attachActivity(activity: Activity) {
+        activityTracker.attach(activity)
+    }
+
     /** Captures the resumed activity. No-op when disabled or when no activity is resumed. */
     fun capture(screen: String?) {
         if (!config.isEnabled) return
-        val activity = activityTracker.currentActivity() ?: return
+        val activity = activityTracker.currentActivity()
+        if (activity == null) {
+            logBuffer.append(
+                HaviLogEntry(
+                    level = HaviLogLevel.WARNING,
+                    category = "app",
+                    message = NO_ACTIVITY_MESSAGE,
+                ),
+            )
+            return
+        }
         captureController.present(activity, screen)
     }
 
@@ -117,5 +132,10 @@ internal class HaviRuntime(
     private companion object {
         // Secondary trigger for emulators without a usable shake sensor; on by default.
         const val LONG_PRESS_ENABLED = true
+
+        const val NO_ACTIVITY_MESSAGE =
+            "Havi.capture() did nothing — HaviKit is not tracking a resumed Activity. " +
+                "Start the SDK from Application.onCreate, or call Havi.attachActivity(activity) " +
+                "once after Havi.start when starting later."
     }
 }

@@ -43,6 +43,13 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+            all { it.useJUnitPlatform() }
+        }
+    }
+
     publishing {
         singleVariant("release") {
             withSourcesJar()
@@ -61,6 +68,9 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 // The Android `release` software component is created late by AGP (after the
