@@ -27,8 +27,9 @@ internal final class HaviInvalidBaseURLException: Exception {
   }
 }
 
-/// Builds the immutable `HaviConfig` off the main actor. Enabled-without-a-valid
+/// Builds the immutable `HaviConfig` from the JS payload. Enabled-without-a-valid
 /// URL throws (rejecting `start`); a disabled config resolves to the inert path.
+/// Called from `start`, which hops to `.main`, so this runs on the main thread.
 private func makeHaviConfig(from config: HaviStartConfig) throws -> HaviConfig {
   let trimmed = config.baseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
   let url = trimmed.isEmpty ? nil : URL(string: trimmed)

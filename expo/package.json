@@ -4,6 +4,15 @@
   "description": "Expo Modules bridge for the HaviKit on-device HAVI mobile feedback SDK (iOS, Android, web no-op).",
   "main": "build/index.js",
   "types": "build/index.d.ts",
+  "files": [
+    "build",
+    "plugin/build",
+    "ios",
+    "android",
+    "expo-module.config.json",
+    "app.plugin.js",
+    "!**/*.tsbuildinfo"
+  ],
   "scripts": {
     "build": "node internal/module_scripts/build.js",
     "clean": "node internal/module_scripts/clean.js",
@@ -39,6 +48,7 @@
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@types/jest": "^29.2.1",
+    "@types/node": "^24.0.0",
     "@types/react": "~19.1.1",
     "babel-preset-expo": "~55.0.8",
     "eslint": "~9.39.4",
@@ -58,8 +68,8 @@
     ]
   },
   "peerDependencies": {
-    "expo": "*",
-    "react": "*",
-    "react-native": "*"
+    "expo": ">=52.0.0",
+    "react": ">=18.0.0",
+    "react-native": ">=0.76.0"
   }
 }
