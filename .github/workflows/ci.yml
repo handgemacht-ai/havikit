@@ -131,3 +131,14 @@ jobs:
       - name: Clean up result bundle
         if: always()
         run: rm -rf TestResults.xcresult
+
+  podspec-lint:
+    name: pod lib lint (CocoaPods)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: CocoaPods version
+        run: pod --version
+      - name: pod lib lint HaviKit.podspec
+        run: pod lib lint HaviKit.podspec --allow-warnings
