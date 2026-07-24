@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import Combine
 import CoreGraphics
 import UIKit
 import XCTest
@@ -52,6 +53,81 @@ final class HaviCaptureModelStateTests: XCTestCase {
         XCTAssertEqual(model.prioritySelection, "high")
         XCTAssertFalse(model.includeNetworkErrors)
         XCTAssertTrue(model.includeConsoleErrors)
+    }
+
+    // MARK: - The editors announce their own changes
+
+    /// `HaviCaptureModel` owns the markup and crop editors, but an
+    /// `ObservableObject` never republishes a child's changes — which is why the
+    /// canvas and the image screen observe `markup` / `crop` directly. These
+    /// prove the signal those views subscribe to actually fires: a mark that
+    /// lands without announcing itself is a canvas that never repaints.
+
+    func testCommittingAMarkAnnouncesItself() {
+        let model = makeModel()
+        var announcements = 0
+        let subscription = model.markup.objectWillChange.sink { _ in announcements += 1 }
+
+        model.markup.selectTool(.pen)
+        model.markup.begin(at: CGPoint(x: 0.1, y: 0.1))
+        model.markup.extend(to: CGPoint(x: 0.4, y: 0.4))
+        model.markup.end()
+        subscription.cancel()
+
+        XCTAssertEqual(model.markup.marks.count, 1)
+        XCTAssertGreaterThan(announcements, 0, "a drawn mark must announce itself or the canvas never repaints")
+    }
+
+    /// Ending a drag-move grows the undo stack without touching `marks`, so the
+    /// toolbar's Undo/Redo state depends on that push announcing itself too.
+    func testEndingAMoveAnnouncesTheUndoStepItPushes() {
+        let model = makeModel()
+        model.markup.selectTool(.rectangle)
+        model.markup.begin(at: CGPoint(x: 0.2, y: 0.2))
+        model.markup.extend(to: CGPoint(x: 0.6, y: 0.6))
+        model.markup.end()
+
+        model.markup.selectTool(.select)
+        model.markup.begin(at: CGPoint(x: 0.4, y: 0.4))
+        model.markup.extend(to: CGPoint(x: 0.5, y: 0.5))
+        let movedBounds = model.markup.marks[0].normalizedBounds
+
+        var announcements = 0
+        let subscription = model.markup.objectWillChange.sink { _ in announcements += 1 }
+        model.markup.end()
+        subscription.cancel()
+
+        XCTAssertGreaterThan(announcements, 0, "the pushed undo step must announce itself or Undo never re-enables")
+        model.markup.undo()
+        XCTAssertNotEqual(model.markup.marks[0].normalizedBounds, movedBounds, "the move is its own undo step")
+    }
+
+    func testCropDraftAnnouncesItself() {
+        let model = makeModel()
+        var announcements = 0
+        let subscription = model.crop.objectWillChange.sink { _ in announcements += 1 }
+
+        model.beginCropEditing(previousTool: .pen)
+        model.crop.updateResize(handle: .bottomRight, to: CGPoint(x: 0.6, y: 0.6))
+        model.confirmCrop()
+        subscription.cancel()
+
+        XCTAssertGreaterThan(announcements, 0, "the crop overlay follows the draft rect only if it is announced")
+    }
+
+    /// The owner stays silent while its editors change — the constraint that
+    /// forces every view reading `markup` / `crop` to observe them directly
+    /// rather than relying on the capture model.
+    func testTheOwningModelDoesNotRepublishItsEditors() {
+        let model = makeModel()
+        var announcements = 0
+        let subscription = model.objectWillChange.sink { _ in announcements += 1 }
+
+        model.markup.selectTool(.arrow)
+        model.crop.updateResize(handle: .topLeft, to: CGPoint(x: 0.1, y: 0.1))
+        subscription.cancel()
+
+        XCTAssertEqual(announcements, 0)
     }
 
     // MARK: - Viewport comes from the captured still (phone-QA finding 4)

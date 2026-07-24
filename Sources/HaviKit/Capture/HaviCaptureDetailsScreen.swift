@@ -1,15 +1,16 @@
 #if canImport(UIKit)
 import SwiftUI
+import UIKit
 
 /// Screen 2 of the two-screen capture flow (bead havi-oukr): diagnostics,
 /// comment, priority, and submit — everything about *sending* the report,
-/// once the still itself (Screen 1) is settled. Pushed via
-/// `.navigationDestination` from `HaviCaptureSheet`; Back returns to Screen 1
-/// with the shared `HaviCaptureModel` untouched, so marks, crop, comment, and
-/// toggles all survive the round trip. A submit failure keeps this screen
-/// open with everything still editable.
+/// once the still itself (Screen 1) is settled. Pushed by `HaviCaptureSheet`'s
+/// programmatic `NavigationLink`; Back returns to Screen 1 with the shared
+/// `HaviCaptureModel` untouched, so marks, crop, comment, and toggles all
+/// survive the round trip. A submit failure keeps this screen open with
+/// everything still editable.
 struct HaviCaptureDetailsScreen: View {
-    @Bindable var model: HaviCaptureModel
+    @ObservedObject var model: HaviCaptureModel
     let runtime: HaviRuntime
     let onBack: () -> Void
     let onClose: () -> Void
@@ -176,13 +177,46 @@ struct HaviCaptureDetailsScreen: View {
     private var commentField: some View {
         VStack(alignment: .leading, spacing: 8) {
             eyebrow("Comment")
-            TextField("What's wrong here? (optional)", text: $model.comment, axis: .vertical)
-                .lineLimit(2...5)
-                .textFieldStyle(.roundedBorder)
-                .focused($commentFocused)
-                .disabled(model.isSubmitting)
-                .accessibilityIdentifier("havi-comment-field")
+            if #available(iOS 16, *) {
+                TextField(Self.commentPrompt, text: $model.comment, axis: .vertical)
+                    .lineLimit(2...5)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($commentFocused)
+                    .disabled(model.isSubmitting)
+                    .accessibilityIdentifier("havi-comment-field")
+            } else {
+                commentEditor
+            }
         }
+    }
+
+    private static let commentPrompt: LocalizedStringKey = "What's wrong here? (optional)"
+
+    /// iOS 15 has neither a vertically-growing `TextField` nor a range
+    /// `lineLimit`, so the comment is a `TextEditor` sized to the same two-to-five
+    /// line band, wearing a rounded border and its own placeholder to match the
+    /// `.roundedBorder` field the rest of the sheet uses.
+    private var commentEditor: some View {
+        TextEditor(text: $model.comment)
+            .frame(minHeight: 64, maxHeight: 116)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Color(UIColor.separator), lineWidth: 1)
+            )
+            .overlay(alignment: .topLeading) {
+                if model.comment.isEmpty {
+                    Text(Self.commentPrompt)
+                        .foregroundStyle(Color(UIColor.placeholderText))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 11)
+                        .allowsHitTesting(false)
+                }
+            }
+            .focused($commentFocused)
+            .disabled(model.isSubmitting)
+            .accessibilityIdentifier("havi-comment-field")
     }
 
     private var prioritySegments: some View {

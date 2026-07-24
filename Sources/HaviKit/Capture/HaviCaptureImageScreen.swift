@@ -15,19 +15,38 @@ import UIKit
 /// zooms the canvas into the cropped region so the rest of the annotation happens
 /// on a bigger surface.
 struct HaviCaptureImageScreen: View {
-    let model: HaviCaptureModel
+    @ObservedObject var model: HaviCaptureModel
     let image: UIImage
     let onNext: () -> Void
 
+    /// The markup and crop editors this screen reads (the tool, the crop
+    /// indicator, whether Next is unlocked) are observed directly: they are
+    /// nested `ObservableObject`s, and a change inside one never reaches an
+    /// observer of `model` alone.
+    @ObservedObject private var markup: HaviMarkupModel
+    @ObservedObject private var crop: HaviCropModel
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var isCropping: Bool { model.markup.tool == .crop }
+    /// The tool the crop handler needs as its "before" value, kept here because
+    /// `onChange(of:perform:)` reports only the new one.
+    @State private var previousTool: HaviMarkTool = .pen
+
+    init(model: HaviCaptureModel, image: UIImage, onNext: @escaping () -> Void) {
+        self.image = image
+        self.onNext = onNext
+        _model = ObservedObject(wrappedValue: model)
+        _markup = ObservedObject(wrappedValue: model.markup)
+        _crop = ObservedObject(wrappedValue: model.crop)
+    }
+
+    private var isCropping: Bool { markup.tool == .crop }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             toolbarTray
 
-            HaviMarkupCanvas(image: image, model: model.markup, crop: model.crop)
+            HaviMarkupCanvas(image: image, model: markup, crop: crop)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black.opacity(0.03))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -38,7 +57,7 @@ struct HaviCaptureImageScreen: View {
                 .shadow(color: Color.black.opacity(0.08), radius: 10, y: 4)
 
             if !isCropping {
-                HaviColorSwatchRow(model: model.markup)
+                HaviColorSwatchRow(model: markup)
                     .transition(.opacity)
             }
 
@@ -50,18 +69,20 @@ struct HaviCaptureImageScreen: View {
         .navigationTitle("Report to HAVI")
         .navigationBarTitleDisplayMode(.inline)
         .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: isCropping)
-        .onChange(of: model.markup.tool) { oldTool, newTool in
+        .onChange(of: markup.tool) { newTool in
+            let oldTool = previousTool
+            previousTool = newTool
             if newTool == .crop {
                 model.beginCropEditing(previousTool: oldTool)
-            } else if oldTool == .crop, model.crop.isEditing {
-                model.crop.cancel()
+            } else if oldTool == .crop, crop.isEditing {
+                crop.cancel()
             }
         }
     }
 
     private var toolbarTray: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HaviMarkupToolbar(model: model.markup)
+            HaviMarkupToolbar(model: markup)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
         }
@@ -100,9 +121,9 @@ struct HaviCaptureImageScreen: View {
                 title: "Reset",
                 systemImage: "arrow.counterclockwise",
                 identifier: "havi-crop-reset",
-                enabled: model.crop.isCropped
+                enabled: crop.isCropped
             ) {
-                model.crop.reset()
+                crop.reset()
             }
 
             Spacer(minLength: 8)
@@ -158,15 +179,15 @@ struct HaviCaptureImageScreen: View {
             Label {
                 Text(markupHint)
             } icon: {
-                Image(systemName: model.markup.tool.systemImage)
+                Image(systemName: markup.tool.systemImage)
             }
             .font(.footnote)
             .foregroundStyle(.secondary)
-            .animation(reduceMotion ? nil : .snappy, value: model.markup.tool)
+            .animation(reduceMotion ? nil : .snappy, value: markup.tool)
 
             Spacer(minLength: 8)
 
-            if model.crop.isCropped {
+            if crop.isCropped {
                 Label("Cropped", systemImage: "crop")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(HaviMarkupCanvas.accent)
@@ -174,11 +195,11 @@ struct HaviCaptureImageScreen: View {
                     .accessibilityIdentifier("havi-crop-indicator")
             }
         }
-        .animation(reduceMotion ? nil : .snappy, value: model.crop.isCropped)
+        .animation(reduceMotion ? nil : .snappy, value: crop.isCropped)
     }
 
     private var markupHint: String {
-        switch model.markup.tool {
+        switch markup.tool {
         case .select: return "Tap a mark to select it, then drag to move or delete it."
         case .blur: return "Drag over anything private — it's blacked out in the image before it's sent."
         case .highlighter: return "Drag to highlight the area of the bug."

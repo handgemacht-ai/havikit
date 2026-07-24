@@ -20,7 +20,7 @@ const pkg = require('../../package.json') as { name: string; version: string };
  */
 export type HaviKitPluginProps = {
   ios?: {
-    /** iOS deployment-target floor. Default `'17.0'` (the HaviKit SPM floor). */
+    /** iOS deployment-target floor. Default `'15.0'` (the HaviKit SPM floor). */
     deploymentTarget?: string;
     /** CocoaPods spec name of the wrapped SDK. Default `'HaviKit'`. */
     podName?: string;
@@ -55,7 +55,7 @@ export type HaviKitPluginProps = {
 
 const DEFAULTS = {
   ios: {
-    deploymentTarget: '17.0',
+    deploymentTarget: '15.0',
     podName: 'HaviKit',
     gitUrl: 'https://github.com/handgemacht-ai/havikit.git',
     gitTag: 'v0.2.0',

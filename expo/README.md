@@ -34,7 +34,7 @@ This package uses native code, so it does not run in Expo Go. Build a
 The plugin wires the native build only; it carries no HAVI config values (those
 flow at runtime through `start(config)`). It:
 
-- raises the iOS deployment target to **17.0** (HaviKit's floor);
+- raises the iOS deployment target to **15.0** (HaviKit's floor);
 - inserts the iOS SDK pod source into the `Podfile` (`pod 'HaviKit', :git => …`),
   because the SDK is not on the CocoaPods trunk;
 - raises the Android `minSdkVersion` to **26** (the AAR's floor);
@@ -52,7 +52,7 @@ All values are overridable:
         "@handgemacht-ai/expo-havikit",
         {
           "ios": {
-            "deploymentTarget": "17.0",
+            "deploymentTarget": "15.0",
             "gitUrl": "https://github.com/handgemacht-ai/havikit.git",
             "gitTag": "v0.2.0"
           },
@@ -69,7 +69,7 @@ All values are overridable:
 
 | Prop | Default | Purpose |
 | --- | --- | --- |
-| `ios.deploymentTarget` | `"17.0"` | iOS deployment-target floor. |
+| `ios.deploymentTarget` | `"15.0"` | iOS deployment-target floor. |
 | `ios.podName` | `"HaviKit"` | CocoaPods spec name of the wrapped SDK. |
 | `ios.gitUrl` | HaviKit repo | Git source for the SDK pod. |
 | `ios.gitTag` | `"v0.2.0"` | Git tag to pin (ignored when `gitBranch` is set). |
@@ -184,7 +184,7 @@ reliable primary triggers in React Native; shake is best-effort (a focused
 
 | Platform | Dependency | Minimum | Status |
 | --- | --- | --- | --- |
-| iOS | `HaviKit` pod (git-tag sourced) | iOS 17.0 | podspec not yet published in the HaviKit repo |
+| iOS | `HaviKit` pod (git-tag sourced) | iOS 15.0 | podspec not yet published in the HaviKit repo |
 | Android | `ai.handgemacht:havikit` (artifactId `havikit`) | `minSdkVersion` 26 | AAR not yet published to a Maven repository |
 
 - **iOS** depends on the `HaviKit` SDK via CocoaPods (git-tag sourced). SPM inside

@@ -34,7 +34,7 @@ _Hardening work still in review appends to this section as it merges._
   `expo/README.md`.
 - **iOS** — `HaviKit.podspec` at the repo root, so CocoaPods hosts (including
   the Expo bridge) can resolve `pod 'HaviKit'`. It mirrors `Package.swift`:
-  iOS 17, Swift 5.10, sources only, no bundled resources.
+  iOS 15, Swift 5.10, sources only, no bundled resources.
 - **Android** — `Havi.attachActivity(activity)`, a public entry point for hosts
   that start the SDK after their first Activity has already resumed.
 - **React Native** — config-plugin options for local development against an
@@ -46,6 +46,19 @@ _Hardening work still in review appends to this section as it merges._
   pairing.
 - **React Native** — `expo/example`, an Expo app that dogfoods the module
   against the in-repo bridge.
+- **All** — a root MIT `LICENSE`, which the podspec and `expo/package.json`
+  already claimed.
+
+### Changed
+
+- **iOS** — the minimum deployment target is now **iOS 15** (was iOS 17), so
+  HaviKit drops into apps that still support older devices. Capture, the markup
+  and crop editors, the two-screen report flow, and pairing all behave as
+  before. The one visible difference on iOS 15: the comment box is a fixed
+  multi-line editor instead of one that grows as you type.
+- **React Native** — the config plugin's default iOS deployment target is now
+  `15.0`. A project that already targets something higher keeps it; the plugin
+  only ever raises the floor.
 
 ### Fixed
 
@@ -57,6 +70,47 @@ _Hardening work still in review appends to this section as it merges._
   entry point worked. Hosts that start the SDK from `Application.onCreate` were
   unaffected. A capture that still cannot resolve a window now leaves a warning
   breadcrumb instead of returning silently.
+- **All** — a report that times out *after* the service already stored it no
+  longer lands twice. Every send of one report — the transient retry and both
+  re-encode fallbacks — now carries the same idempotency key. Server-side
+  de-duplication on that key follows separately; this is the client half.
+- **All** — a chatty `Havi.log()` can no longer balloon memory or the uploaded
+  log body. Each message is capped at 4 KiB (cut on a character boundary, never
+  mid-character) and the whole ring at 256 KiB, oldest evicted first.
+- **All** — a rate-limited response carrying no error body is retried like any
+  other transient failure instead of dead-ending the report.
+- **All** — a credential the service rejects is cleared from the device
+  immediately. Previously, dismissing the reconnect prompt left the dead
+  credential in place and every later report failed until the app was
+  reinstalled.
+- **All** — one rule now decides whether a base URL is usable on every platform:
+  absolute, `http` or `https`, with a host. iOS previously accepted schemeless
+  values like `havi.test` and then failed at request time.
+- **All** — HaviKit armed without a usable base URL no longer takes the host app
+  down. It writes a single console line and resolves to its inert state; the
+  Expo `start()` still rejects with an error you can catch.
+- **iOS** — `HAVI_ENABLED` is read the way the documentation describes:
+  `YES`/`true` in any case, with surrounding whitespace, and as a plist boolean
+  (which previously failed silently).
+- **iOS** — uploads, pairing, and label requests refuse redirects, so the bearer
+  token and workspace header are never replayed to a host the SDK never trusted.
+  Keychain items are written as after-first-unlock, this-device-only.
+- **React Native** — the documented behaviour of `start()` matches the code: the
+  first call wins and later calls are ignored.
+- **Android** — the stored HAVI credential is encrypted at rest. An
+  already-connected device migrates on its next launch and stays connected, with
+  no cleartext copy left behind. If the device keystore cannot produce a key,
+  pairing keeps working and the weakened storage is recorded in the diagnostics
+  that ship with the next report rather than passed over in silence.
+- **Android** — a screenshot the device cannot process — a degenerate crop, an
+  out-of-memory frame, a failing transport — shows the ordinary "Couldn't
+  prepare the screenshot." message instead of crashing the host app.
+- **Android** — a report survives Activity recreation. Rotating, switching to
+  dark mode, or resizing mid-send no longer cancels the upload and loses the
+  report; the sheet comes back on the recreated Activity with the markup,
+  comment, and "Sending…" state intact, and settles to sent or to the failure
+  banner as usual. System Back now closes the sheet (the connect sheet first,
+  when it is layered on top) and is ignored while a report is sending.
 
 ### Internal
 

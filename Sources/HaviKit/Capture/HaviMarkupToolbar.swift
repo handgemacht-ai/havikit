@@ -6,7 +6,7 @@ import SwiftUI
 /// the select tool has a mark chosen. Leaf accessibility identifiers ride on each
 /// control (never the container), per the repo UI-test rule.
 struct HaviMarkupToolbar: View {
-    @Bindable var model: HaviMarkupModel
+    @ObservedObject var model: HaviMarkupModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let buttonCorner: CGFloat = 11
@@ -106,7 +106,7 @@ struct HaviMarkupToolbar: View {
 /// The 6-preset color swatch row (design: red default). Tapping picks the color
 /// applied to new marks; the current pick lifts with an accent ring.
 struct HaviColorSwatchRow: View {
-    @Bindable var model: HaviMarkupModel
+    @ObservedObject var model: HaviMarkupModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {

@@ -24,7 +24,18 @@ private struct HaviOverlayActive<Content: View>: View {
     let runtime: HaviRuntime
     let content: Content
 
+    /// `HaviRuntime` is not itself observable, so the presenter it holds is what
+    /// this view observes — the floating button, the confirmation toast, and the
+    /// capture sheet all hang off its published state.
+    @ObservedObject private var presenter: HaviCapturePresenter
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(runtime: HaviRuntime, content: Content) {
+        self.runtime = runtime
+        self.content = content
+        _presenter = ObservedObject(wrappedValue: runtime.presenter)
+    }
 
     var body: some View {
         content
@@ -33,34 +44,34 @@ private struct HaviOverlayActive<Content: View>: View {
             }
             .background(HaviTriggerInstaller { Havi.triggerCapture() })
             .overlay(alignment: .bottomTrailing) {
-                if runtime.presenter.showsFloatingButton {
+                if presenter.showsFloatingButton {
                     HaviFloatingCaptureButton { Havi.triggerCapture() }
                         .padding(20)
                 }
             }
             .overlay(alignment: .top) {
-                if let confirmation = runtime.presenter.confirmation {
+                if let confirmation = presenter.confirmation {
                     HaviSubmitConfirmationToast(message: confirmation.message) {
-                        runtime.presenter.clearConfirmation(confirmation.id)
+                        presenter.clearConfirmation(confirmation.id)
                     }
                     .id(confirmation.id)
                     .transition(.opacity)
                 }
             }
-            .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: runtime.presenter.confirmation)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: presenter.confirmation)
             .sheet(item: sheetBinding) { session in
                 HaviCaptureSheet(
                     session: session,
                     runtime: runtime,
-                    onClose: { runtime.presenter.dismiss() }
+                    onClose: { presenter.dismiss() }
                 )
             }
     }
 
     private var sheetBinding: Binding<HaviCaptureSession?> {
         Binding(
-            get: { runtime.presenter.session },
-            set: { runtime.presenter.session = $0 }
+            get: { presenter.session },
+            set: { presenter.session = $0 }
         )
     }
 }

@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 
 /// The capture sheet (design §2, two-screen restructure = bead havi-oukr):
-/// hosts a `NavigationStack` with two pushed screens sharing one
+/// hosts a stack-style `NavigationView` with two pushed screens sharing one
 /// `HaviCaptureModel` —
 ///
 /// 1. `HaviCaptureImageScreen` — the frozen screenshot's own canvas-focused
@@ -23,7 +23,7 @@ struct HaviCaptureSheet: View {
     let runtime: HaviRuntime
     let onClose: () -> Void
 
-    @State private var model: HaviCaptureModel
+    @StateObject private var model: HaviCaptureModel
     @State private var showDetails = false
     @State private var showConnect = false
     @State private var connectReconnect = false
@@ -33,11 +33,11 @@ struct HaviCaptureSheet: View {
         self.session = session
         self.runtime = runtime
         self.onClose = onClose
-        _model = State(initialValue: HaviCaptureModel(session: session, runtime: runtime))
+        _model = StateObject(wrappedValue: HaviCaptureModel(session: session, runtime: runtime))
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             HaviCaptureImageScreen(model: model, image: session.image) {
                 showDetails = true
             }
@@ -47,18 +47,9 @@ struct HaviCaptureSheet: View {
                         .disabled(model.isSubmitting)
                 }
             }
-            .navigationDestination(isPresented: $showDetails) {
-                HaviCaptureDetailsScreen(
-                    model: model,
-                    runtime: runtime,
-                    onBack: { showDetails = false },
-                    onClose: onClose,
-                    showConnect: $showConnect,
-                    connectReconnect: $connectReconnect,
-                    showDiagnostics: $showDiagnostics
-                )
-            }
+            .background(detailsLink)
         }
+        .navigationViewStyle(.stack)
         .interactiveDismissDisabled(model.isSubmitting)
         .sheet(isPresented: $showConnect) {
             HaviConnectSheet(runtime: runtime, reconnect: connectReconnect) {
@@ -68,6 +59,30 @@ struct HaviCaptureSheet: View {
         .sheet(isPresented: $showDiagnostics) {
             HaviDiagnosticsDetailSheet(model: model) { showDiagnostics = false }
         }
+    }
+
+    /// Screen 2 is pushed programmatically from Screen 1's "Next", so the link
+    /// itself renders nothing and rides along as a background. Every piece of
+    /// report state lives on the shared `model`, which this sheet owns, so
+    /// popping back rebuilds Screen 1 over the same marks, crop, comment,
+    /// priority, labels, and diagnostics toggles.
+    private var detailsLink: some View {
+        NavigationLink(
+            isActive: $showDetails,
+            destination: {
+                HaviCaptureDetailsScreen(
+                    model: model,
+                    runtime: runtime,
+                    onBack: { showDetails = false },
+                    onClose: onClose,
+                    showConnect: $showConnect,
+                    connectReconnect: $connectReconnect,
+                    showDiagnostics: $showDiagnostics
+                )
+            },
+            label: { EmptyView() }
+        )
+        .accessibilityHidden(true)
     }
 }
 #endif
