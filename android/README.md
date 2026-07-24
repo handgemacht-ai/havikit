@@ -90,6 +90,21 @@ class MyApp : Application() {
 }
 ```
 
+### Starting after the first Activity resumed
+
+`start` registers the activity-lifecycle callbacks HaviKit tracks windows with, so an
+Activity that already resumed is invisible to it until the app is backgrounded and
+foregrounded once — until then there is no window to capture. Hosts that cannot start
+from `Application.onCreate` (React Native / Expo, where JS calls `start` from an effect)
+pass the current Activity once:
+
+```kotlin
+Havi.start(applicationContext, config)
+Havi.attachActivity(activity)   // the Activity on screen right now
+```
+
+The `@handgemacht-ai/expo-havikit` bridge does this for you.
+
 ## Compose integration
 
 ```kotlin
@@ -114,6 +129,7 @@ Leaf annotations, usable anywhere in the tree:
 |---|---|---|
 | `isEnabled` | `val isEnabled: Boolean` | `false` until `start` resolves an enabled config. |
 | `start` | `fun start(context: Context, config: HaviConfig = HaviConfig.fromManifest(context))` | Build the runtime and arm triggers. Inert config → returns; already started → returns (idempotent). |
+| `attachActivity` | `fun attachActivity(activity: Activity)` | Names the resumed Activity when `start` ran after it resumed. Repeatable, any thread. Unnecessary when starting from `Application.onCreate`. |
 | `capture` | `fun capture(screen: String? = null)` | Programmatic capture of the resumed activity. No-op unless started. |
 | `triggerCapture` | `fun triggerCapture(screen: String? = null)` | Thread-free trigger (shake/long-press callbacks); hops to the main thread. |
 | `log` | `fun log(message: String, level: HaviLogLevel = HaviLogLevel.INFO, category: String = "app")` | Breadcrumb ring. `error`-level in a non-`network` category surfaces as a console error; the rest ride in app-logs. Records even when inert. |
@@ -163,15 +179,16 @@ labels.
 
 ```bash
 cd android
-./gradlew :havikit-core:test        # pure-JVM suites (envelope golden, transport, redaction, canonical JSON, …)
-./gradlew :havikit:lint             # Android lint (needs the Android SDK)
-./gradlew :havikit:assemble         # build the AAR (needs the Android SDK)
+./gradlew :havikit-core:test         # pure-JVM suites (envelope golden, transport, redaction, canonical JSON, …)
+./gradlew :havikit:testDebugUnitTest # library unit tests on the JVM (needs the Android SDK)
+./gradlew :havikit:lint              # Android lint (needs the Android SDK)
+./gradlew :havikit:assemble          # build the AAR (needs the Android SDK)
 ```
 
 `:havikit-core` builds and tests with only a JDK. `:havikit` applies the Android
 Gradle Plugin and is wired into the build only when an Android SDK is present
 (`ANDROID_HOME`/`ANDROID_SDK_ROOT`, or `sdk.dir` in `local.properties`).
-`.github/workflows/android.yml` runs all three on `ubuntu-latest`.
+`.github/workflows/android.yml` runs all of them on `ubuntu-latest`.
 
 ## Publish
 
