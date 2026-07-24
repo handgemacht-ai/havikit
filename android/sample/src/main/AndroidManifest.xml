@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:name=".SampleApp"
+        android:allowBackup="true"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.HaviSample">
+
+        <!-- Stamped HAVI_* config, read by HaviConfig.fromManifest at start.
+             HAVI_BASE_URL comes from the ${haviBaseUrl} manifest placeholder so the
+             endpoint is overridable at build time (see build.gradle.kts). -->
+        <meta-data android:name="HAVI_ENABLED" android:value="YES" />
+        <meta-data android:name="HAVI_BASE_URL" android:value="${haviBaseUrl}" />
+        <meta-data android:name="HAVI_PROJECT" android:value="havikit-sample" />
+        <meta-data android:name="HAVI_IMAGE_FORMAT" android:value="png" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
