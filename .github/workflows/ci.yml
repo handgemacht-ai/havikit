@@ -32,12 +32,29 @@ jobs:
         run: npm ci
       - name: Typecheck bridge (tsc --noEmit)
         run: npx tsc --noEmit
-      - name: Build config plugin (tsc --build plugin)
-        run: npx tsc --build plugin --force
       - name: Lint
         run: npm run lint
       - name: Validate expo-module.config.json
         run: node -e "JSON.parse(require('fs').readFileSync('expo-module.config.json','utf8'))"
+      # Packs the tarball exactly as `npm publish` would (running `prepare` a
+      # second time after `npm ci` already ran it once) and asserts the compiled
+      # config plugin ships and that `app.plugin.js` resolves to it. This is the
+      # publish path that `npx expo prebuild` exercises in a consuming app; a
+      # plain `tsc --build plugin --force` would hide a stale-buildinfo no-op.
+      - name: Pack and verify the config plugin ships and resolves
+        run: |
+          set -euo pipefail
+          npm pack
+          tarball=$(ls handgemacht-ai-expo-havikit-*.tgz)
+          rm -rf /tmp/havikit-pack && mkdir -p /tmp/havikit-pack
+          tar -xzf "$tarball" -C /tmp/havikit-pack
+          pkg=/tmp/havikit-pack/package
+          test -f "$pkg/app.plugin.js" \
+            || { echo "::error::app.plugin.js missing from published tarball"; exit 1; }
+          test -f "$pkg/plugin/build/index.js" \
+            || { echo "::error::plugin/build missing from published tarball (config plugin would not resolve)"; exit 1; }
+          node -e "require('path'); require.resolve(require('path').resolve('$pkg', 'plugin/build')); console.log('app.plugin.js -> ./plugin/build resolves from the packed tarball')"
+          rm -f "$tarball"
 
   swift-test:
     name: swift test (macOS host)
