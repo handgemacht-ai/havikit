@@ -26,7 +26,7 @@ internal class HaviRuntime(
     private val transport: HaviHttpTransport = HaviAndroidHttpTransport()
 
     val tokenStore: HaviTokenStore = HaviTokenStore(HaviPrefsCredentialBacking(context))
-    val uploader: HaviUploader = HaviUploader(config, transport)
+    val uploader: HaviUploader = HaviUploader(config, transport, tokenStore)
     val connectService: HaviConnectService = HaviConnectService(config, tokenStore, transport)
     private val labelService: HaviLabelService = HaviLabelService(config, transport)
 

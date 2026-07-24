@@ -92,7 +92,11 @@ public object HaviErrorMapping {
             return HaviResponseClassification.Success(id = createdId(body))
         }
         errorCode(body)?.let { return HaviResponseClassification.Mapped(mapCode(it)) }
-        // No JSON error.code: classify by transport class — 5xx transient, else terminal.
+        // No JSON error.code: classify by transport class — 5xx and a bare 429
+        // (rate limit / edge throttle, often body-less) transient, else terminal.
+        if (status == TOO_MANY_REQUESTS) {
+            return HaviResponseClassification.Mapped(transientTransport)
+        }
         if (status >= 500) {
             return HaviResponseClassification.Mapped(transientTransport)
         }
@@ -115,4 +119,6 @@ public object HaviErrorMapping {
 
     private fun parseObject(body: ByteArray): JsonObject? =
         runCatching { json.parseToJsonElement(body.toString(Charsets.UTF_8)) as? JsonObject }.getOrNull()
+
+    private const val TOO_MANY_REQUESTS = 429
 }

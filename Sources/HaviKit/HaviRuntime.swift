@@ -29,7 +29,7 @@ final class HaviRuntime {
     ) {
         self.config = config
         self.tokenStore = tokenStore
-        self.uploader = HaviUploader(config: config)
+        self.uploader = HaviUploader(config: config, tokenStore: tokenStore)
         self.connectService = connectService ?? HaviConnectService(config: config, tokenStore: tokenStore)
         self.labelService = labelService ?? HaviLabelService(config: config)
     }

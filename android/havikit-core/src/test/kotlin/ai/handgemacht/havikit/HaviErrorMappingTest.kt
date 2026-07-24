@@ -45,5 +45,19 @@ class HaviErrorMappingTest {
         assertEquals(HaviErrorAction.TERMINAL, (terminal as HaviResponseClassification.Mapped).error.action)
     }
 
+    /** A rate limit arrives body-less from an edge proxy: retryable, not a dead end. */
+    @Test
+    fun classifyBare429IsTransient() {
+        val empty = HaviErrorMapping.classify(429, bytes(""))
+        assertEquals(HaviResponseClassification.Mapped(HaviErrorMapping.transientTransport), empty)
+
+        val html = HaviErrorMapping.classify(429, bytes("<html>Too Many Requests</html>"))
+        assertEquals(HaviErrorAction.TRANSIENT_RETRY, (html as HaviResponseClassification.Mapped).error.action)
+
+        // A 429 that DOES carry a code still maps on the code.
+        val coded = HaviErrorMapping.classify(429, bytes("""{"error":{"code":"unauthorized"}}"""))
+        assertEquals(HaviErrorAction.REAUTH, (coded as HaviResponseClassification.Mapped).error.action)
+    }
+
     private fun bytes(json: String): ByteArray = json.toByteArray(Charsets.UTF_8)
 }

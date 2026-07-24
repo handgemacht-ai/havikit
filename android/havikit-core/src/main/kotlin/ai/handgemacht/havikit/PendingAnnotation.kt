@@ -1,5 +1,7 @@
 package ai.handgemacht.havikit
 
+import java.util.UUID
+
 /**
  * Re-encodes the outgoing (already cropped + redacted) image at a new format /
  * longest side for the server-driven fallbacks (wire spec §7.3). Returns null when
@@ -20,6 +22,11 @@ public fun interface HaviImageReencoder {
  * cropped, redacted outgoing image for the server-driven fallbacks — nothing
  * mutable, so a later context/tag mutation or credential change cannot race an
  * in-flight send.
+ *
+ * [idempotencyKey] is minted once per pending annotation and rides on every send
+ * of it — the transient retry and both re-encode fallbacks — so a request that
+ * timed out after the server had already stored it cannot become a duplicate
+ * annotation.
  */
 public data class PendingAnnotation(
     val annotationJson: String,
@@ -29,6 +36,7 @@ public data class PendingAnnotation(
     val workspaceId: String?,
     val bearerToken: String? = null,
     val reencoder: HaviImageReencoder? = null,
+    val idempotencyKey: String = UUID.randomUUID().toString(),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -39,7 +47,8 @@ public data class PendingAnnotation(
             siblings == other.siblings &&
             workspaceId == other.workspaceId &&
             bearerToken == other.bearerToken &&
-            reencoder == other.reencoder
+            reencoder == other.reencoder &&
+            idempotencyKey == other.idempotencyKey
     }
 
     override fun hashCode(): Int {
@@ -50,6 +59,7 @@ public data class PendingAnnotation(
         result = 31 * result + (workspaceId?.hashCode() ?: 0)
         result = 31 * result + (bearerToken?.hashCode() ?: 0)
         result = 31 * result + (reencoder?.hashCode() ?: 0)
+        result = 31 * result + idempotencyKey.hashCode()
         return result
     }
 
