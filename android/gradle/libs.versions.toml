@@ -7,6 +7,7 @@ androidxCoreKtx = "1.13.1"
 composeBom = "2024.12.01"
 androidxActivityCompose = "1.9.3"
 androidxLifecycle = "2.8.7"
+androidxSecurityCrypto = "1.1.0"
 kotlinxCoroutines = "1.9.0"
 
 [libraries]
@@ -18,6 +19,7 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCoreKtx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivityCompose" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "androidxSecurityCrypto" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
