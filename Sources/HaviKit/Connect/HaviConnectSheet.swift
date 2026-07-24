@@ -17,7 +17,7 @@ struct HaviConnectSheet: View {
     let runtime: HaviRuntime
     let onClose: () -> Void
 
-    @State private var model: HaviConnectModel
+    @StateObject private var model: HaviConnectModel
     @State private var approvalBrowser = HaviApprovalBrowser()
     @State private var pasteExpanded = false
     @State private var otherDeviceExpanded = false
@@ -28,11 +28,11 @@ struct HaviConnectSheet: View {
     init(runtime: HaviRuntime, reconnect: Bool = false, onClose: @escaping () -> Void) {
         self.runtime = runtime
         self.onClose = onClose
-        _model = State(initialValue: HaviConnectModel(runtime: runtime, reconnect: reconnect))
+        _model = StateObject(wrappedValue: HaviConnectModel(runtime: runtime, reconnect: reconnect))
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     switch model.phase {
@@ -59,18 +59,19 @@ struct HaviConnectSheet: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .onAppear {
             model.onAppear()
             approvalBrowser.onFinish = { model.browserClosed() }
         }
-        .onChange(of: model.browser.isPresented) { _, presented in
+        .onChange(of: model.browser.isPresented) { presented in
             if presented, let url = model.approveURL {
                 approvalBrowser.start(url: url)
             } else {
                 approvalBrowser.stop()
             }
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { phase in
             // Returning to the foreground (from the in-app sign-in browser or a
             // background magic-link round trip) settles to the connected state if
             // the approval landed while we were away, and otherwise keeps the poll

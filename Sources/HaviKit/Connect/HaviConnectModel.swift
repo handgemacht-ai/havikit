@@ -1,6 +1,6 @@
 #if canImport(UIKit)
+import Combine
 import Foundation
-import Observation
 
 /// Drives the connect sheet (design §5): create a `client_type: mobile` pairing,
 /// open the approval page in the in-app sign-in browser, poll the exchange
@@ -12,8 +12,7 @@ import Observation
 /// `HaviConnectBrowserState`; this is the `@MainActor`-observable glue the SwiftUI
 /// sheet binds to.
 @MainActor
-@Observable
-final class HaviConnectModel {
+final class HaviConnectModel: ObservableObject {
     enum Phase: Equatable {
         case connected(HaviConnectedSession)
         case creating
@@ -22,10 +21,10 @@ final class HaviConnectModel {
         case error(String)
     }
 
-    private(set) var phase: Phase
-    private(set) var browser = HaviConnectBrowserState()
-    var pasteToken: String = ""
-    var pasteWorkspaceID: String = ""
+    @Published private(set) var phase: Phase
+    @Published private(set) var browser = HaviConnectBrowserState()
+    @Published var pasteToken: String = ""
+    @Published var pasteWorkspaceID: String = ""
 
     private let runtime: HaviRuntime
     private let cancelFlag = HaviConnectCancelFlag()

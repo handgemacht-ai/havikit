@@ -19,8 +19,8 @@ import UIKit
 /// so the crop rect the submit pipeline reads is never touched here.
 struct HaviMarkupCanvas: View {
     let image: UIImage
-    @Bindable var model: HaviMarkupModel
-    @Bindable var crop: HaviCropModel
+    @ObservedObject var model: HaviMarkupModel
+    @ObservedObject var crop: HaviCropModel
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 

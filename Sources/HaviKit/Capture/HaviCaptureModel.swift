@@ -1,6 +1,6 @@
 #if canImport(UIKit)
+import Combine
 import CoreGraphics
-import Observation
 import UIKit
 
 /// Drives one capture sheet (design §2): the markup marks, comment, priority,
@@ -11,55 +11,57 @@ import UIKit
 /// actor. On failure the sheet stays open with the marks/comment intact and an
 /// honest, `error.code`-mapped reason.
 @MainActor
-@Observable
-final class HaviCaptureModel {
+final class HaviCaptureModel: ObservableObject {
     enum Phase: Equatable {
         case editing
         case submitting
         case failed(HaviSubmitFailure)
     }
 
-    var comment: String = ""
+    @Published var comment: String = ""
     /// The selected priority value as a raw string, so a workspace's custom
     /// priority vocabulary rides through unchanged. Seeded from the carried-in
     /// `HaviPriority` default and reconciled onto the resolved option set once the
     /// vocabulary loads (`loadLabelDefinitions`).
-    var prioritySelection: String
+    @Published var prioritySelection: String
     /// The workspace's `priority` choice definition, when the fetched vocabulary
     /// carries one. When present it drives the priority control's options and the
     /// emitted value; when nil the control falls back to the built-in
     /// high/medium/low set (see `priorityOptions` / `showsPriority`).
-    private(set) var priorityDefinition: HaviLabelDefinition?
+    @Published private(set) var priorityDefinition: HaviLabelDefinition?
     /// Whether a label vocabulary was successfully resolved (fetch returned a list,
     /// even if empty). Distinguishes the offline fallback — where the built-in
     /// high/medium/low priority is kept and emitted — from a resolved vocabulary
     /// that archived/omitted priority, where no priority body is emitted.
-    private(set) var vocabularyResolved = false
+    @Published private(set) var vocabularyResolved = false
     /// The workspace label vocabulary, resolved lazily when the details screen
     /// appears (`loadLabelDefinitions`). Empty until then, and stays empty on a
     /// fetch failure or an empty vocabulary, so the details screen shows only the
     /// priority control. Excludes the `priority` definition itself, which the
     /// segmented priority control renders.
-    private(set) var additionalLabelDefinitions: [HaviLabelDefinition] = []
+    @Published private(set) var additionalLabelDefinitions: [HaviLabelDefinition] = []
     /// Applied values for `choice` / `value` labels, keyed by label key. A missing
     /// or empty entry means the label is unapplied.
-    var labelChoiceValues: [String: String] = [:]
+    @Published var labelChoiceValues: [String: String] = [:]
     /// Applied `flag` labels (presence == on).
-    var labelFlags: Set<String> = []
+    @Published var labelFlags: Set<String> = []
     /// The multi-mark markup editor (bead havi-6953). Owned here so `submit`
     /// serializes its marks into the envelope and burns its blur regions into the
-    /// pixels before encoding.
+    /// pixels before encoding. A nested `ObservableObject` does not republish
+    /// through its owner, so every view that reads it observes it directly —
+    /// see `HaviCaptureImageScreen` and `HaviMarkupCanvas`.
     let markup = HaviMarkupModel()
     /// The crop tool's rect (bead havi-oukr), normalized to the full frozen
-    /// still — the same space marks live in. Shared by both capture screens.
+    /// still — the same space marks live in. Shared by both capture screens, and
+    /// observed directly by them for the same reason as `markup`.
     let crop = HaviCropModel()
-    private(set) var phase: Phase = .editing
+    @Published private(set) var phase: Phase = .editing
 
     /// Diagnostics frozen at capture time so the badge, the detail sheet, and the
     /// submitted envelope all describe the exact same breadcrumb snapshot.
     let diagnostics: HaviDiagnostics.Split
-    var includeConsoleErrors = true
-    var includeNetworkErrors = true
+    @Published var includeConsoleErrors = true
+    @Published var includeNetworkErrors = true
 
     private let session: HaviCaptureSession
     private let runtime: HaviRuntime

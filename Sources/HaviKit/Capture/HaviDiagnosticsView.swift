@@ -74,11 +74,11 @@ struct HaviDiagnosticsBadgeRow: View {
 /// include/exclude toggle (default ON) that controls whether the group is attached
 /// to the submission.
 struct HaviDiagnosticsDetailSheet: View {
-    @Bindable var model: HaviCaptureModel
+    @ObservedObject var model: HaviCaptureModel
     let onClose: () -> Void
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             List {
                 if !model.diagnostics.consoleErrors.isEmpty {
                     Section {
@@ -117,6 +117,7 @@ struct HaviDiagnosticsDetailSheet: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
 
     private func entryRow(title: String, detail: String) -> some View {

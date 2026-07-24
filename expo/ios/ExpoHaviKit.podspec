@@ -25,7 +25,7 @@ Pod::Spec.new do |s|
   s.license        = package['license']
   s.author         = package['author']
   s.homepage       = package['homepage']
-  s.platform       = :ios, '17.0'
+  s.platform       = :ios, '15.0'
   s.swift_version  = '5.10'
   s.source         = { git: 'https://github.com/handgemacht-ai/havikit.git', tag: "v#{s.version}" }
   s.static_framework = true

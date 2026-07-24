@@ -1,5 +1,5 @@
 #if canImport(UIKit)
-import Observation
+import Combine
 import UIKit
 
 /// One frozen capture cycle (design §2): the redacted still plus the context the
@@ -31,11 +31,10 @@ struct HaviSubmitConfirmation: Identifiable, Equatable {
 /// the (off-by-default) floating "bug" affordance from the config; `confirmation`
 /// is set for the brief window the "Report sent" toast is on screen.
 @MainActor
-@Observable
-final class HaviCapturePresenter {
-    var session: HaviCaptureSession?
-    var showsFloatingButton: Bool
-    private(set) var confirmation: HaviSubmitConfirmation?
+final class HaviCapturePresenter: ObservableObject {
+    @Published var session: HaviCaptureSession?
+    @Published var showsFloatingButton: Bool
+    @Published private(set) var confirmation: HaviSubmitConfirmation?
 
     init(showsFloatingButton: Bool = false) {
         self.showsFloatingButton = showsFloatingButton

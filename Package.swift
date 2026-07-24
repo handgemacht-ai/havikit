@@ -10,7 +10,7 @@ import PackageDescription
 // against an iOS Simulator.
 let package = Package(
     name: "HaviKit",
-    platforms: [.iOS(.v17), .macOS(.v12)],
+    platforms: [.iOS(.v15), .macOS(.v12)],
     products: [
         .library(name: "HaviKit", targets: ["HaviKit"]),
     ],

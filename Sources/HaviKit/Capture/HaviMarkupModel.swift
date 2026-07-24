@@ -1,7 +1,7 @@
 #if canImport(UIKit)
+import Combine
 import CoreGraphics
 import Foundation
-import Observation
 
 /// The multi-mark markup editor state (bead havi-6953), owned by the capture sheet
 /// and observed by `HaviMarkupCanvas`. Holds the current tool + color, the array
@@ -10,18 +10,19 @@ import Observation
 /// gesture funnels through the `begin/extend/end` methods so the canvas view stays
 /// thin — it only converts display points to normalized (0…1) coordinates.
 @MainActor
-@Observable
-final class HaviMarkupModel {
-    var tool: HaviMarkTool = .pen
-    var color: HaviMarkColor = .red
-    private(set) var marks: [HaviMark] = []
-    private(set) var inProgress: HaviMark?
-    var selectedMarkID: UUID?
+final class HaviMarkupModel: ObservableObject {
+    @Published var tool: HaviMarkTool = .pen
+    @Published var color: HaviMarkColor = .red
+    @Published private(set) var marks: [HaviMark] = []
+    @Published private(set) var inProgress: HaviMark?
+    @Published var selectedMarkID: UUID?
 
     /// Undo/redo hold whole-array snapshots, so an add, a move, and a delete are
-    /// each one reversible step (design: object-level undo AND redo).
-    private var undoStack: [[HaviMark]] = []
-    private var redoStack: [[HaviMark]] = []
+    /// each one reversible step (design: object-level undo AND redo). Published
+    /// because ending a move grows the undo stack without touching `marks`, and
+    /// the toolbar's undo/redo buttons read `canUndo` / `canRedo`.
+    @Published private var undoStack: [[HaviMark]] = []
+    @Published private var redoStack: [[HaviMark]] = []
 
     private var anchor: CGPoint?
     private var moveSnapshot: [HaviMark]?

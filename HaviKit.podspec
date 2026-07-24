@@ -13,7 +13,7 @@ Pod::Spec.new do |s|
   s.author           = 'handgemacht-ai'
   s.source           = { :git => 'https://github.com/handgemacht-ai/havikit.git', :tag => "v#{s.version}" }
 
-  s.ios.deployment_target = '17.0'
+  s.ios.deployment_target = '15.0'
   s.swift_version    = '5.10'
 
   s.source_files     = 'Sources/HaviKit/**/*.swift'

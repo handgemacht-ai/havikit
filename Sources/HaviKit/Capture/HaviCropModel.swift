@@ -1,6 +1,6 @@
 #if canImport(UIKit)
+import Combine
 import CoreGraphics
-import Observation
 
 /// The crop tool's editor state (bead havi-od6t): the normalized crop rect,
 /// defaulting to the full frame, moved by dragging one of the eight
@@ -11,13 +11,12 @@ import Observation
 /// a mis-dragged crop is recovered with `reset()` / `cancel()`, not object undo,
 /// since it is one rect rather than a history of discrete marks.
 @MainActor
-@Observable
-final class HaviCropModel {
+final class HaviCropModel: ObservableObject {
     /// The confirmed crop AND the live draft while editing — one rect so the
     /// submit pipeline keeps reading `crop.rect` unchanged and the overlay shows
     /// a WYSIWYG box. `confirmedRect` snapshots the value `cancel()` restores.
-    private(set) var rect: CGRect = HaviCropGeometry.fullFrame
-    private(set) var isEditing = false
+    @Published private(set) var rect: CGRect = HaviCropGeometry.fullFrame
+    @Published private(set) var isEditing = false
     private var confirmedRect: CGRect = HaviCropGeometry.fullFrame
 
     var isCropped: Bool { rect != HaviCropGeometry.fullFrame }

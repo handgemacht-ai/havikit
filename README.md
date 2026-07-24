@@ -16,7 +16,7 @@ only.
 
 ## Requirements
 
-- iOS 17+ (the capture/overlay UI). The pure-logic targets (envelope builder,
+- iOS 15+ (the capture/overlay UI). The pure-logic targets (envelope builder,
   secret scrub, transport) also build for macOS 12+, which is how `swift test`
   runs on a Mac host with no Simulator.
 - Swift 5.10 / Xcode 16+.
