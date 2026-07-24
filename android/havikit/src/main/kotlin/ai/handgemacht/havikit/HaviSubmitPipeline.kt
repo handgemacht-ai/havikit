@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import kotlinx.coroutines.CancellationException
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -40,6 +41,31 @@ internal object HaviSubmitPipeline {
         val includeNetworkErrors: Boolean,
     )
 
+    /** The terminal failure every unrecoverable preparation maps to, matching iOS verbatim. */
+    val preparationFailure: HaviSubmitFailure =
+        HaviSubmitFailure("Couldn't prepare the screenshot.", HaviSubmitFailureKind.TERMINAL, null)
+
+    /**
+     * Runs [block], mapping anything it throws to null — the same "couldn't prepare
+     * the screenshot" outcome an unencodable frame already produces.
+     *
+     * Bitmap work fails hard rather than politely: `Bitmap.createBitmap` throws
+     * `IllegalArgumentException` on a degenerate crop, `copy`/`createScaledBitmap`
+     * return null or throw once a device-sized frame no longer fits the heap, and an
+     * `OutOfMemoryError` is not an `Exception` at all. Uncaught, any of those unwind
+     * out of the submit coroutine and take the **host app** down over a feedback
+     * report. Cancellation is deliberately re-thrown: a dismissed sheet must still
+     * unwind as cancellation, not turn into a spurious failure banner.
+     */
+    inline fun <T : Any> guarded(block: () -> T?): T? =
+        try {
+            block()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Throwable) {
+            null
+        }
+
     /**
      * Runs the pipeline over a frozen [frame], returning the immutable
      * [PendingAnnotation] the uploader consumes, or null when the screenshot
@@ -51,10 +77,30 @@ internal object HaviSubmitPipeline {
         config: HaviConfig,
         workspaceId: String?,
         bearerToken: String?,
+    ): Prepared? =
+        guarded {
+            build(
+                frame = frame,
+                draft = draft,
+                config = config,
+                workspaceId = workspaceId,
+                bearerToken = bearerToken,
+            )
+        }
+
+    private fun build(
+        frame: HaviCaptureFrame,
+        draft: Draft,
+        config: HaviConfig,
+        workspaceId: String?,
+        bearerToken: String?,
     ): Prepared? {
         val cropped = cropBitmap(frame.bitmap, draft.cropRect)
         val projectedMarks = HaviCropGeometry.projectMarks(draft.marks, draft.cropRect)
         val outgoing = burnBlurRegions(cropped, projectedMarks)
+        // The crop is a throwaway once the blur pass copied it; the frozen frame itself
+        // is never recycled — the sheet still draws it and a retry re-runs from it.
+        if (outgoing !== cropped && cropped !== frame.bitmap) cropped.recycle()
 
         val encodedBytes = HaviImagePipeline.encode(outgoing, config.imageFormat) ?: return null
         val imageSize = HaviSize(outgoing.width, outgoing.height)
