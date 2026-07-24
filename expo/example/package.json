@@ -1,0 +1,28 @@
+{
+  "name": "expo-havikit-example",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "prebuild": "expo prebuild"
+  },
+  "dependencies": {
+    "expo": "~57.0.8",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": ".."
+    }
+  },
+  "private": true
+}

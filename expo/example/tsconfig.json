@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@handgemacht-ai/expo-havikit": ["../src/index"],
+      "@handgemacht-ai/expo-havikit/*": ["../src/*"]
+    }
+  }
+}

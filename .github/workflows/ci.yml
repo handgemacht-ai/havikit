@@ -142,3 +142,46 @@ jobs:
         run: pod --version
       - name: pod lib lint HaviKit.podspec
         run: pod lib lint HaviKit.podspec --allow-warnings
+
+  expo-example-android:
+    name: expo example (Android compile, Ubuntu)
+    # The one true end-to-end bridge compile: publishes the HaviKit AAR to
+    # mavenLocal, prebuilds the in-tree example against the module (autolinked via
+    # its app.json nativeModulesDir), and assembles a debug APK — exercising the
+    # config plugin's mavenLocal + minSdk wiring and the ExpoHaviKit ↔ HaviKit link.
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            expo/package-lock.json
+            expo/example/package-lock.json
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Publish the HaviKit AAR (+ core) to mavenLocal
+        working-directory: android
+        run: ./gradlew :havikit-core:publishToMavenLocal :havikit:publishToMavenLocal
+      - name: Install the expo bridge deps
+        working-directory: expo
+        run: npm ci
+      - name: Install the example app deps
+        working-directory: expo/example
+        run: npm ci
+      - name: Typecheck the example (tsc --noEmit)
+        working-directory: expo/example
+        run: npx tsc --noEmit
+      - name: Prebuild the Android project
+        working-directory: expo/example
+        run: npx expo prebuild --platform android --no-install
+      - name: Assemble the example APK (debug)
+        working-directory: expo/example/android
+        run: ./gradlew assembleDebug

@@ -30,12 +30,26 @@ export type HaviKitPluginProps = {
     gitTag?: string;
     /** Git branch to track instead of a tag. */
     gitBranch?: string;
+    /**
+     * Local-development escape hatch: source the `HaviKit` pod from an on-disk
+     * checkout via `:path` (resolved from the project root) instead of `:git`.
+     * Mutually exclusive with the git-tag/branch form — when set, that form is
+     * skipped. Used by this repo's in-tree example app.
+     */
+    havikitPodPath?: string;
   };
   android?: {
     /** `minSdkVersion` floor. Default `26` (the `ai.handgemacht:havikit` floor). */
     minSdkVersion?: number;
     /** Maven repository serving `ai.handgemacht:havikit`. */
     mavenUrl?: string;
+    /**
+     * Local-development escape hatch: register `mavenLocal()` (instead of the
+     * credentialed GitHub Packages `mavenUrl`) so a `publishToMavenLocal` build
+     * of `ai.handgemacht:havikit` resolves without credentials. Mutually
+     * exclusive with `mavenUrl`. Used by this repo's in-tree example app.
+     */
+    useMavenLocal?: boolean;
   };
 };
 
@@ -65,15 +79,11 @@ export function isVersionGreater(a: string, b: string): boolean {
   return false;
 }
 
-/** Inserts the git-sourced SDK pod once, right after `use_expo_modules!`. */
-export function addPodDependency(
-  contents: string,
-  opts: { podName: string; gitUrl: string; ref: { key: string; value: string } }
-): string {
-  if (new RegExp(`pod ['"]${opts.podName}['"]`).test(contents)) {
+/** Inserts a fully-formed `pod` line once, right after `use_expo_modules!`. */
+function insertPodLine(contents: string, podName: string, podLine: string): string {
+  if (new RegExp(`pod ['"]${podName}['"]`).test(contents)) {
     return contents;
   }
-  const podLine = `  pod '${opts.podName}', :git => '${opts.gitUrl}', :${opts.ref.key} => '${opts.ref.value}'`;
   const anchor = 'use_expo_modules!';
   if (contents.includes(anchor)) {
     return contents.replace(anchor, `${anchor}\n${podLine}`);
@@ -84,6 +94,24 @@ export function addPodDependency(
     return `${contents.slice(0, at)}${podLine}\n${contents.slice(at)}`;
   }
   return contents;
+}
+
+/** Inserts the git-sourced SDK pod once, right after `use_expo_modules!`. */
+export function addPodDependency(
+  contents: string,
+  opts: { podName: string; gitUrl: string; ref: { key: string; value: string } }
+): string {
+  const podLine = `  pod '${opts.podName}', :git => '${opts.gitUrl}', :${opts.ref.key} => '${opts.ref.value}'`;
+  return insertPodLine(contents, opts.podName, podLine);
+}
+
+/** Inserts the local `:path`-sourced SDK pod once, right after `use_expo_modules!`. */
+export function addPodPathDependency(
+  contents: string,
+  opts: { podName: string; podPath: string }
+): string {
+  const podLine = `  pod '${opts.podName}', :path => '${opts.podPath}'`;
+  return insertPodLine(contents, opts.podName, podLine);
 }
 
 /** Adds the credentialed Maven repo once, into `allprojects { repositories { … } }`. */
@@ -101,6 +129,20 @@ export function addMavenRepository(contents: string, url: string): string {
     `      }`,
     `    }`,
   ].join('\n');
+  const anchor = /allprojects\s*\{\s*repositories\s*\{/;
+  if (anchor.test(contents)) {
+    return contents.replace(anchor, (matched) => `${matched}\n${block}`);
+  }
+  return `${contents}\n\nallprojects {\n  repositories {\n${block}\n  }\n}\n`;
+}
+
+/** Registers `mavenLocal()` once, into `allprojects { repositories { … } }`. */
+export function addMavenLocalRepository(contents: string): string {
+  const marker = '// mavenLocal @handgemacht-ai/expo-havikit';
+  if (contents.includes(marker)) {
+    return contents;
+  }
+  const block = `    mavenLocal() ${marker}`;
   const anchor = /allprojects\s*\{\s*repositories\s*\{/;
   if (anchor.test(contents)) {
     return contents.replace(anchor, (matched) => `${matched}\n${block}`);
@@ -165,6 +207,15 @@ const withIosPodSource: ConfigPlugin<{
     return config;
   });
 
+const withIosPodPath: ConfigPlugin<{ podName: string; podPath: string }> = (config, { podName, podPath }) =>
+  withPodfile(config, (config) => {
+    const resolved = path.isAbsolute(podPath)
+      ? podPath
+      : path.resolve(config.modRequest.projectRoot, podPath);
+    config.modResults.contents = addPodPathDependency(config.modResults.contents, { podName, podPath: resolved });
+    return config;
+  });
+
 const withAndroidMinSdk: ConfigPlugin<{ minSdkVersion: number }> = (config, { minSdkVersion }) =>
   withGradleProperties(config, (config) => {
     config.modResults = raiseMinSdkVersion(config.modResults, minSdkVersion);
@@ -184,6 +235,19 @@ const withAndroidMavenRepo: ConfigPlugin<{ mavenUrl: string }> = (config, { mave
     return config;
   });
 
+const withAndroidMavenLocal: ConfigPlugin = (config) =>
+  withProjectBuildGradle(config, (config) => {
+    if (config.modResults.language !== 'groovy') {
+      WarningAggregator.addWarningAndroid(
+        'expo-havikit',
+        `Cannot add mavenLocal() to a ${config.modResults.language} build.gradle — add it to your android/build.gradle allprojects.repositories manually.`
+      );
+      return config;
+    }
+    config.modResults.contents = addMavenLocalRepository(config.modResults.contents);
+    return config;
+  });
+
 const withHaviKit: ConfigPlugin<HaviKitPluginProps | void> = (config, props) => {
   const ios = { ...DEFAULTS.ios, ...(props?.ios ?? {}) };
   const android = { ...DEFAULTS.android, ...(props?.android ?? {}) };
@@ -192,9 +256,17 @@ const withHaviKit: ConfigPlugin<HaviKitPluginProps | void> = (config, props) => 
     : { key: 'tag', value: ios.gitTag };
 
   config = withIosDeploymentTarget(config, { deploymentTarget: ios.deploymentTarget });
-  config = withIosPodSource(config, { podName: ios.podName, gitUrl: ios.gitUrl, ref });
+  if (props?.ios?.havikitPodPath) {
+    config = withIosPodPath(config, { podName: ios.podName, podPath: props.ios.havikitPodPath });
+  } else {
+    config = withIosPodSource(config, { podName: ios.podName, gitUrl: ios.gitUrl, ref });
+  }
   config = withAndroidMinSdk(config, { minSdkVersion: android.minSdkVersion });
-  config = withAndroidMavenRepo(config, { mavenUrl: android.mavenUrl });
+  if (props?.android?.useMavenLocal) {
+    config = withAndroidMavenLocal(config);
+  } else {
+    config = withAndroidMavenRepo(config, { mavenUrl: android.mavenUrl });
+  }
   return config;
 };
 
