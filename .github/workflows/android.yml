@@ -26,6 +26,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Golden fixture is in sync across iOS and Android
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/check-fixture-sync.sh
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
