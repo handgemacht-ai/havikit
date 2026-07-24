@@ -34,6 +34,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Lint
         run: npm run lint
+      - name: Test bridge (jest)
+        run: npm test
       - name: Validate expo-module.config.json
         run: node -e "JSON.parse(require('fs').readFileSync('expo-module.config.json','utf8'))"
       # Packs the tarball exactly as `npm publish` would (running `prepare` a
@@ -63,6 +65,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Golden fixture is in sync across iOS and Android
+        run: bash scripts/check-fixture-sync.sh
       - name: Add Homebrew to PATH
         run: echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
       - name: Toolchain versions
