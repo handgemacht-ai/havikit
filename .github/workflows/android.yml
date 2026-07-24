@@ -46,3 +46,5 @@ jobs:
         run: ./gradlew :havikit:lint
       - name: Assemble Android AAR
         run: ./gradlew :havikit:assemble
+      - name: Assemble sample app (debug)
+        run: ./gradlew :sample:assembleDebug
